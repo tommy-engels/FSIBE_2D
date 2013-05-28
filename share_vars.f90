@@ -24,7 +24,7 @@ module share_vars
   ! ----------------------------------------------
   ! mask parameter
   ! ----------------------------------------------
-  integer, parameter :: Mask_end = 0 ! 0=round 1=sharp
+  integer, parameter :: Mask_end = 1 ! 0=round 1=sharp
   logical, save::  sharp= .false. ! if the smoothing is 0, then we switch to a sharp mask.
   
   
@@ -44,7 +44,7 @@ module share_vars
   integer, parameter :: EulerImplicit = 1, CrankNicholson = 2, RungeKutta4 = 3, EulerExplicit=4, BDF2 = 5 ! integers for different solid solvers. do not modify!!!!!
   integer, save :: TimeMethodSolid != BDF2  ! set values from list above; NOT VALUE IS OVERWRITTEN IN PARAMS
   logical, save :: StartupStep=.true.
-  integer, parameter :: N_cpu_solid = 4 ! number of CPU's for PARDISO solver
+  integer, parameter :: N_cpu_solid = 16 ! number of CPU's for PARDISO solver
   
   ! ----------------------------------------------
   ! Solid datatype

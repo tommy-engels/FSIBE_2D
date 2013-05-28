@@ -38,25 +38,36 @@ subroutine create_mask ( time, beam )
   !		Draw the walls
   !--------------------------------------------------------------------------------
   if (iWalls>0) then
-      !-- bottom wall
-      ymin = 0
-      ymax = nint( h_star/ dy )
-      !$omp parallel do private(j,temp)
-      do j=ymin, ymax
-        call SmoothStep(temp, real(j)*dy, h_channel, N*dy )
-        mask(:,j)= temp
-      enddo
-      !$omp end parallel do
+!       !-- bottom wall
+!       ymin = 0
+!       ymax = nint( h_star/ dy )
+!       !$omp parallel do private(j,temp)
+!       do j=ymin, ymax
+!         call SmoothStep(temp, real(j)*dy, h_channel, N*dy )
+!         mask(:,j)= temp
+!       enddo
+!       !$omp end parallel do
+!       
+!       !-- top wall
+!       ymin = nint( (yl-h_star)/dy)
+!       ymax = ny-1
+!       !$omp parallel do private(j,temp)
+!       do j=ymax,ymin,-1
+!         call SmoothStep(temp,abs( real(j)*dy-yl), h_channel, N*dy )
+!         mask(:,j)= temp
+!       enddo
+!       !$omp end parallel do
+
+      !------------------------------------
+      ! modified version (sharp walls!)
+      !------------------------------------
+      ymin = nint ( h_channel / dy ) + 1 ! note we set the actual BC to one
+      ymax = nint ( (yl-h_channel) / dy ) - 1 ! note we set the actual BC to one
       
-      !-- top wall
-      ymin = nint( (yl-h_star)/dy)
-      ymax = ny-1
-      !$omp parallel do private(j,temp)
-      do j=ymax,ymin,-1
-        call SmoothStep(temp,abs( real(j)*dy-yl), h_channel, N*dy )
-        mask(:,j)= temp
-      enddo
-      !$omp end parallel do
+      mask = 1.0      
+      mask(:,ymin:ymax) = 0.0
+      
+      
   endif
 
   !--------------------------------------------------------------------------------
@@ -75,11 +86,10 @@ subroutine create_mask ( time, beam )
     !---- Draw beam segments
     do i=0, ns-2
       call DrawBeamSegment( beam(i,1), beam(i,2),&
-      beam(i+1,1),beam(i+1,2),&
-      beam(i,3)  ,beam(i,4),&
-      beam(i+1,3),beam(i+1,4),&
-      t_beam, N )
-!       call DrawBeamSegment( beam(i,1:2),beam(i+1,1:2), beam(i,3:4), beam(i+1,3:4), t_beam, N )
+	  beam(i+1,1),beam(i+1,2),&
+	  beam(i,3)  ,beam(i,4),&
+	  beam(i+1,3),beam(i+1,4),&
+	  t_beam, N )
     enddo
     
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -114,52 +124,73 @@ subroutine create_mask ( time, beam )
   ! let's keep it like this.
 
     if (iSponge==4) then
-      sponge_size_star = SpongeSize ! what you set is the effective sponge size
-      sponge_size = SpongeSize - 2.0*N*dx   !"core" size of the sponge
+!       sponge_size_star = SpongeSize ! what you set is the effective sponge size
+!       sponge_size = SpongeSize - 2.0*N*dx   !"core" size of the sponge
+!       H_effective = yl-2.0*h_channel
+! 
+!       !-----------------------------------------------left half of the sponge
+!       ixmax=nint ((0.5*sponge_size_star)/dx)
+!       ixmin=0
+!       !$omp parallel do private(ix,iy,y_chan,tmp,x)
+!       do ix=ixmin, ixmax
+!       do iy=0,ny-1
+!         y_chan = (real(iy)*dy-h_channel)
+!         x = 0.75*sponge_size_star - real(ix)*dx
+! !        call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) ) !for a transition based on the smoothing layer thickness
+!         call SmoothStep (tmp, x, sponge_size*0.5, 0.25*sponge_size )
+!         if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
+!         ! set parabolic velocity profile
+!         if ((y_chan>0.0).and.(y_chan<H_effective)) then
+!           ! attention: the maximum velocity here is always 1, but the mean velocity is smaller!
+!           maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+!         else
+!           maskvx(ix,iy) =  0.0
+!         endif
+!       enddo
+!       enddo
+!       !$omp end parallel do
+! 
+!       !-----------------------------------------------right half of the sponge
+!       ixmin=nint ((0.5*sponge_size_star)/dx)
+!       ixmax=nint ((1.0*sponge_size_star)/dx)
+!       !$omp parallel do private(ix,iy,y_chan,tmp,x)
+!       do ix=ixmin, ixmax
+!       do iy=0,ny-1
+!         y_chan = (real(iy)*dy-h_channel)
+!         x = real(ix)*dx - 0.5*sponge_size_star
+!         call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
+!         if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
+!         ! set parabolic velocity profile
+!         if ((y_chan>0.0).and.(y_chan<H_effective)) then
+!           ! attention: the velocity here is always 1, but the mean velocity is smaller!
+! 	  maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+!         else
+!           maskvx(ix,iy) =  0.0
+!         endif
+!       enddo
+!       enddo
+!       !$omp end parallel do
+      
+      !----------------------------
+      ! modified version, sharp mask function     
+      !----------------------------
+      ixmin = 0
+      ixmax = nint (SpongeSize/dx)
       H_effective = yl-2.0*h_channel
-
-      !-----------------------------------------------left half of the sponge
-      ixmax=nint ((0.5*sponge_size_star)/dx)
-      ixmin=0
-      !$omp parallel do private(ix,iy,y_chan,tmp,x)
-      do ix=ixmin, ixmax
+      
+      !$omp parallel do private (iy,y_chan)
       do iy=0,ny-1
-        y_chan = (real(iy)*dy-h_channel)
-        x = 0.75*sponge_size_star - real(ix)*dx
-!        call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) ) !for a transition based on the smoothing layer thickness
-        call SmoothStep (tmp, x, sponge_size*0.5, 0.25*sponge_size )
-        if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
+        y_chan = (real(iy)*dy-h_channel)        
         ! set parabolic velocity profile
         if ((y_chan>0.0).and.(y_chan<H_effective)) then
-          ! attention: the maximum velocity here is always 1, but the mean velocity is smaller!
-          maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+	  maskvx( ixmin:ixmax,iy ) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
         else
-          maskvx(ix,iy) =  0.0
-        endif
-      enddo
+          maskvx( ixmin:ixmax,iy ) =  0.0
+        endif        
+	mask ( ixmin:ixmax, iy ) = 1.0
       enddo
       !$omp end parallel do
-
-      !-----------------------------------------------right half of the sponge
-      ixmin=nint ((0.5*sponge_size_star)/dx)
-      ixmax=nint ((1.0*sponge_size_star)/dx)
-      !$omp parallel do private(ix,iy,y_chan,tmp,x)
-      do ix=ixmin, ixmax
-      do iy=0,ny-1
-        y_chan = (real(iy)*dy-h_channel)
-        x = real(ix)*dx - 0.5*sponge_size_star
-        call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
-        if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
-        ! set parabolic velocity profile
-        if ((y_chan>0.0).and.(y_chan<H_effective)) then
-          ! attention: the velocity here is always 1, but the mean velocity is smaller!
-	  maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
-        else
-          maskvx(ix,iy) =  0.0
-        endif
-      enddo
-      enddo
-      !$omp end parallel do
+      
    endif
    
   !-------------------------------------------------------------------------------------------
@@ -621,6 +652,7 @@ subroutine DrawSharpEnd(point1, alpha, v,t,N)
   xmax = nint( (max(point1(1),point2(1))+t_star)/dx)
   ymin = nint( (min(point1(2),point2(2))-t_star)/dy)
   ymax = nint( (max(point1(2),point2(2))+t_star)/dy)  
+  
   xmin = max( xmin, 0)  
   xmax = min( xmax,nx-1)
   ymin = max( ymin, 0)  
