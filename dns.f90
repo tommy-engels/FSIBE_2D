@@ -3,12 +3,8 @@ program dns
   use FieldExport
   implicit none
   integer :: N_runs
-  real(kind=pr), dimension(:,:,:), allocatable :: vortk_temp, dummyarray  
-  character (len=10)     :: strx,stry
-  character (len=8)      :: str_eps
-  real(kind=pr)          :: days1,hours1,mins1,secs1,runtime, rdummy,dx,dy  
-  integer*8 , dimension (1:2)     ::  total_time,dummy2 ! for performance measurement
-  integer :: i, astatus, idummy, n1
+  real(kind=pr)          :: dx,dy  
+  integer :: i
   
   
   write (*,'(A)') "O--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o--|--o---O" 
@@ -223,9 +219,9 @@ subroutine OnlySolidSimulation()
   real (kind=pr), dimension (0:ns-1, 1:6) :: beam
   real (kind=pr), dimension (0:ns-1) :: pressure, tau_beam
   real (kind=pr), dimension (1:2) :: force_pressure=0.0
-  real (kind=pr), dimension (1:4) :: Forces_old=0.0, Forces_new=0.0 !Forces: 1=drag 2=lift 3=drag_unst 4=lift_unst
+  real (kind=pr), dimension (1:4) :: Forces_new=0.0 !Forces: 1=drag 2=lift 3=drag_unst 4=lift_unst
   real (kind=pr), dimension (1:7) :: FluidIntegralQuantities=0.0 ! 1= vor_rms 2=vor_rms_dot 3=Fluid kinetic Enegry 4=enstrophy
-  real (kind=pr) :: time, time_dt, T_lastdrag
+  real (kind=pr) :: time, time_dt
   integer :: it=0,ndrag,nsave
 
   write (*,*) "*** information: starting OnlySolidSimulation"
@@ -288,11 +284,8 @@ subroutine SolidTimeConvergence()
   real (kind=pr), dimension (0:ns-1, 1:6) :: beam, beam_ref
   real (kind=pr), dimension (0:ns-1) :: pressure, tau_beam
   real (kind=pr), dimension (1:9) :: dts
-  real (kind=pr), dimension (1:2) :: force_pressure=0.0
-  real (kind=pr), dimension (1:4) :: Forces_old=0.0, Forces_new=0.0 !Forces: 1=drag 2=lift 3=drag_unst 4=lift_unst
-  real (kind=pr), dimension (1:4) :: FluidIntegralQuantities=0.0 ! 1= vor_rms 2=vor_rms_dot 3=Fluid kinetic Enegry 4=enstrophy
-  real (kind=pr) :: time, time_dt, T_lastdrag, error_inf, error_max
-  integer (kind=8) :: it=0,i,nt, tmp
+  real (kind=pr) :: time, time_dt, T_lastdrag
+  integer (kind=8) :: it=0,i,nt
 
   write (*,*) "*** information: starting SolidTimeConvergence"
   x0=0.0

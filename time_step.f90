@@ -8,7 +8,7 @@ subroutine time_step
   implicit none
   integer :: inter, it,iStop, ivideo=1
   integer :: n0 = 0, n1 = 1
-  integer :: q, NextTimeDrag
+  integer :: q
   integer :: nbackup = 0 ! 0 - backup to file runtime1_backup0, 1 - to runtime1_backup1, 2 - no backup
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: vort, press
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 0:1) :: nlk, vortk, workvis
@@ -24,13 +24,12 @@ subroutine time_step
   real (kind=pr), dimension (0:ns-1) :: tau_beam_new, tau_beam_old
   integer*8 , dimension (1:2)     ::  total_time,dummy2 ! for performance measurement
   integer*8			  ::  systemtime_lastbackup
-  real (kind=pr) :: dt0 = 0, dt1, ROC, time_start, T_lastsavedata
+  real (kind=pr) :: dt0 = 0, dt1, ROC, time_start
   real (kind=pr) :: time, pmin, pmax
   real (kind=pr) :: dx, dy
   real (kind=pr) :: T_lastsave, T_lastdrag
   real (kind=pr) :: time_dt, time_nst, time_solid, time_mask, time_pressure ! times for performance measurement
-  character(len=17) :: format_ns1, format_ns, format_ns1_HP,namestring,timestring
-  character(len=4)  :: ns_string, ns1_string
+  character(len=17) :: namestring, timestring
   logical :: file_existent, Colorscale_done = .false.
 
 
@@ -39,26 +38,27 @@ subroutine time_step
   time = GetRuntime('start') !for runtime1 measurement
   time = 0.0
 
-  !-- if imposing zero mean pressure, initialize u_mean
-  u_mean = 0.0
-!   u_mean(1) = 1.0
+    
+  if (inicond.ne.2) then
+    T_lastsave = 0.0
+    T_lastdrag = 0.0
+    !-- if imposing zero mean pressure, initialize u_mean
+    u_mean = 0.0
+  endif
   
-  T_lastsave=0.0
-  T_lastsavedata=0.0
-  NextTimeDrag = 0
+  
   q=0;dt1=0.;ROC=0.
-  dx=xl/real(nx)
-  dy=yl/real(ny)
+  dx = xl/real(nx)
+  dy = yl/real(ny)
 
-  write(ns_string, '(I3)') ns
-  write(ns1_string, '(I3)') ns+1
-  format_ns  = '('//ns_string//'(es12.5,1x))'
-  format_ns1 = '('//ns1_string//'(es12.5,1x))'
-  format_ns1_HP = '('//ns1_string//'(es15.8,1x))'
+
 
   call CreateHeader() !stores the PARAMS file in a array in order to write it to the output files as a header
   write(*,*) "*** information: allocated and created header for output files"
   
+  !----------------------------------------------------------------
+  ! Initialize output files and beam
+  !----------------------------------------------------------------  
   if (inicond.ne.2) then 	!not retaking a backup
     call InitBeamFiles()	!init files for data, override
     if (iBeam>0) call init_beam (beam, bpressure_old)
@@ -75,22 +75,26 @@ subroutine time_step
   ! Initialize the solid solver
   !----------------------------------------------------------------  
   call InitializeSolidSolver() ! to tell the BDF2 solver to use CN2 in the first step
+  
   !----------------------------------------------------------------  
   ! Initialize vorticity or read values from a backup file
   ! init must be called BEFORE create_sponge_mask when running multiple-resolutions!!!!
   !----------------------------------------------------------------
   call init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure_old, tau_beam_old, ivideo, u)
   n0 = 1 - n1
+  
   !----------------------------------------------------------------
   ! create startup mask
   !---------------------------------------------------------------- 
   call create_mask (time, beam)
   call SaveGIF(mask, trim(dir_name)//'/'//trim(simulation_name)//"startup_mask", 13, 0.0, 1.0/eps)
+  
   !----------------------------------------------------------------
   ! vorticity sponge
   !---------------------------------------------------------------- 
   call create_sponge_mask() !contains saving the field  
   if ((iSponge>0).and.(iSponge<4)) call SaveGIF(mask_sponge, trim(dir_name)//'/'//trim(simulation_name)//"mask_sponge", 13, minval(mask_sponge), maxval(mask_sponge))
+  
   !----------------------------------------------------------------
   ! compute true mean speed for channels
   !----------------------------------------------------------------
@@ -99,6 +103,7 @@ subroutine time_step
     U_mean_true=1.0-2.0*h_channel/yl
     write (*,*) "--- True mean speed:", U_mean_true
   endif
+  
   !---------------------------------------------------------
   ! Save initial values (fields)
   !---------------------------------------------------------
@@ -149,7 +154,6 @@ subroutine time_step
 
       inter 		= n1 ; n1 = n0 ; n0 = inter 			! Switch time levels
       time 		= time + dt1  					! Advance in time
-      T_lastsavedata 	= time
       bpressure_old 	= bpressure_new			!--Advance beam forces
       tau_beam_old  	= tau_beam_new
       call SaveBeamData(time,beam,bpressure_new, dt1,q,ROC,Forces_new,force_pressure, FluidIntegralQuantities,it) 	!--bpressure new is already at the new time step, ok to be here

@@ -32,9 +32,9 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
   dx = xl / real (nx)
   dy = yl / real (ny)
 
-  !========================================================================================
-  !=              Calculate nonlinear term in physical space      (-u * nabla(vort)       =
-  !========================================================================================
+  !-----------------------------------------------------------------------------------------
+  ! Calculate nonlinear term in physical space      (-u * nabla(vort)   
+  !-----------------------------------------------------------------------------------------
   
   !--Calculate dx and dy of the vorticity
   call cofdx (vortk, work2)
@@ -51,9 +51,9 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
 
   call coftxy (work2, nlk) !--Calculate fourier coefficient of nonlinear term
   
-  !========================================================================================
-  !=              Calculate time step                                                     =
-  !========================================================================================
+  !-----------------------------------------------------------------------------------------
+  ! Calculate time step
+  !-----------------------------------------------------------------------------------------
   !-- CFL condition for the fluid
   
   !$omp parallel do private(iy)
@@ -77,7 +77,7 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
   endif
   !-----------------------------------------------------------------------
   !-- Time stepping control for beam CFL
-  if (iBeam>0) then
+  if ( (iBeam>0).and.(abs(maxval(beam(:,3:4)))>1.0e-14) ) then
   if (dt1>cfl*min(dx,dy)/maxval(beam(:,3:4))) then
       dt1 = cfl*min(dx,dy)/maxval(beam(:,3:4))
   endif
@@ -102,9 +102,9 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
   write (14,'(1x, 5(es12.4,1x))') time, dt1, u_max, sum(u(:,:,1))/real(nx*ny), sum(u(:,:,2))/real(nx*ny)
   close (14)
   
-  !========================================================================================
-  !=              Calculate boundary penalization term in Fourier space                   =
-  !========================================================================================
+  !-----------------------------------------------------------------------------------------
+  ! Calculate boundary penalization term in Fourier space
+  !-----------------------------------------------------------------------------------------
 
   if ((iBeam>0).or.(iWalls>0).or.(iCylinder>0)) then
     !$omp parallel do private(iy)
@@ -132,9 +132,9 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
   endif
     
   
-  !========================================================================================
-  !=              Calculate vorticity sponge term                                         =
-  !========================================================================================
+  !-----------------------------------------------------------------------------------------
+  ! Calculate vorticity sponge term
+  !-----------------------------------------------------------------------------------------
 
   if ((iSponge>0).and.(iSponge<4)) then
   
@@ -145,14 +145,42 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
       penvortk=vortk !stupid: you cannot modify an input argument, therefore duplicate
       call cofitxy(penvortk, work2) !transformation into physical space      
 
-      !$omp parallel do private(iy)
-      do iy=0,ny-1
-         work2(:,iy) = mask_sponge(:,iy) * work2(:,iy) ! perform penalization = multiply with the spongemask
-      enddo
-      !$omp end parallel do
+      if (iSpongeType ==1) then !poisseuille sponge - forces linear vorticity profile
+      
+          !set the vorticity profile
+          H_effective=yl-2.0*h_channel
+          
+          !$omp parallel do private(iy,y_chan)
+          do iy=0,ny-1
+            ! the Poisseuille flow requires a linear vorticity
+            y_chan = real(iy)*dy-h_channel
+            if ((y_chan>0.0).and.(y_chan<H_effective)) then
+            vort_init(:,iy) = (-6.0*Mean_ux(time)/H_effective)*(1.0-2.0*y_chan/H_effective)
+            else
+            vort_init(:,iy) = 0.0
+            endif
+          enddo
+          !$omp end parallel do
+          
+          !$omp parallel do private(iy)
+          do iy=0,ny-1
+            work2(:,iy) = mask_sponge(:,iy) * (work2(:,iy)-vort_init(:,iy)) ! perform penalization = multiply with the spongemask
+          enddo
+          !$omp end parallel do
+          
+      elseif (iSpongeType ==2) then !No vorticity sponge
+      
+          !$omp parallel do private(iy)
+          do iy=0,ny-1
+            work2(:,iy) = mask_sponge(:,iy) * work2(:,iy) ! perform penalization = multiply with the spongemask
+          enddo
+          !$omp end parallel do
+          
+      endif     
 
       call coftxy(work2,penvortk) ! and back to fourier space. now penvortk is penalized with a sponge
-      !------------------------------------------------------------------------------------
+      
+      ! add the actual term (in Fourier space)
       !$omp parallel do private(iy)
       do iy=0,ny-1
 	!nlk already contains the nonlinear term (u*NABLA(omega))
@@ -160,7 +188,7 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
       enddo
       !$omp end parallel do      
       
-  else !without sponge  
+  else !without vorticity sponge  
   
       !$omp parallel do private(iy)
       do iy=0,ny-1
@@ -277,7 +305,8 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   !------------------------------------------------
   call cofitxy (vortk, work1) !-- vort in physical space
   
-  
+  !$omp sections
+  !$omp section
   ! at this occasion, compute rms value and its derivative
   FluidIntegralQuantities(1) = dx*dy*sqrt ( sum(work1**2) )
   FluidIntegralQuantities(2) = (FluidIntegralQuantities(1)-vor_rms_old)/dt1      
@@ -287,22 +316,22 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   endif
     
   vor_rms_old = FluidIntegralQuantities(1)
-
+  !$omp section
   ! fluid kinetic energy
   FluidIntegralQuantities(3) = 0.5d0*dx*dy*sum( ((u(:,:,1)-Mean_ux(time+dt1))**2 + (u(:,:,2)-Mean_uy(time+dt1))**2) )
-
+  !$omp section
   ! enstrophy (energy dissipation term)
   FluidIntegralQuantities(4) = nu*dx*dy*sum( work1**2 )
-  
+  !$omp section
   ! dissipation in penalty term
   FluidIntegralQuantities(5) = dx*dy*sum( mask*((u(:,:,1)-maskvx)**2+(u(:,:,2)-maskvy)**2) )
-  
+  !$omp section
   ! energy inflow due to penalization
   FluidIntegralQuantities(6) = dx*dy*sum( mask*( maskvx*(u(:,:,1)-maskvx) + maskvy*(u(:,:,2)-maskvy)  ) )
-  
+  !$omp section
   ! energy inflow (note we use the full mask, not only the actual object)
   FluidIntegralQuantities(7) = dx*dy*u_mean_true*sum( Mean_ux(time+dt1)*penal(:,:,1)+Mean_uy(time+dt1)*penal(:,:,2) )
-
+  !$omp end sections
 
   
   !------------------------------------------------
@@ -585,7 +614,7 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
 !!  Forces(3) = drag_unst
 !!  Forces(4) = lift_unst  
   
-  if ((((iIteration==1).and.(DidFirstStep==0)).or.(iIteration==0)).and.(iBeam>0)) then !attention here, only advance once per time step (when using iterations)
+  if (iBeam>0) then
       ! **** try to avoid spurios oscillations!
       ! compute unsteady corrections via the beam 
       accel = (beam(:,3:4)-beam_tmp(:,3:4))/dt1 ! first order derivative

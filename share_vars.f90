@@ -4,7 +4,7 @@ module share_vars
   
 
   character (len=40) :: simulation_name, dir_name, simulation_name_org
-  integer, save :: nx, ny,ns, iMeanVelocity, iSpongeType, nPalettes=14, iMultiRes, DidFirstStep=0, iRPM=0
+  integer, save :: nx, ny,ns, iMeanVelocity, iSpongeType, nPalettes=14, iMultiRes
   integer, save :: idealis, ihypvisc, imove, inicond, iobst, iSponge, iFSI, iBeam, iWalls, iCylinder, iImpulse
   ! save switches
   integer, save :: iSaveBeam, iSaveMask, iSaveMaskVel, iSaveSTR, iSavePress, iSaveVel, iSaveVort, iIteration, iSaveStress
@@ -54,6 +54,7 @@ module share_vars
     real(kind=pr), dimension (:), allocatable :: pressure_old, pressure_new, tau_old, tau_new
     real(kind=pr), dimension(1:2) :: Force, Force_unst, Force_press
     real(kind=pr) :: E_kinetic, E_pot, E_elastic
+    real(kind=pr) :: x0, y0
   end type
 
   

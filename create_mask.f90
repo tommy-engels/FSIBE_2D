@@ -74,7 +74,12 @@ subroutine create_mask ( time, beam )
   if (iBeam>0) then
     !---- Draw beam segments
     do i=0, ns-2
-      call DrawBeamSegment( beam(i,1:2),beam(i+1,1:2), beam(i,3:4), beam(i+1,3:4), t_beam, N )
+      call DrawBeamSegment( beam(i,1), beam(i,2),&
+      beam(i+1,1),beam(i+1,2),&
+      beam(i,3)  ,beam(i,4),&
+      beam(i+1,3),beam(i+1,4),&
+      t_beam, N )
+!       call DrawBeamSegment( beam(i,1:2),beam(i+1,1:2), beam(i,3:4), beam(i+1,3:4), t_beam, N )
     enddo
     
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -518,16 +523,27 @@ subroutine DrawADot (pointx, pointy, vx, vy, t, N)
 end subroutine DrawADot
 
 !==============================================================================================================================================
-
-subroutine DrawBeamSegment(point1, point2, v1, v2, t, N)
+! call DrawBeamSegment( beam(i,1:2),beam(i+1,1:2), beam(i,3:4), beam(i+1,3:4), t_beam, N )
+! subroutine DrawBeamSegment ( point1, point2, v1, v2, t, N )
+subroutine DrawBeamSegment ( p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y, t, N )
   use share_vars
   implicit none
   real (kind=pr), intent (in)  :: t, N
-  real (kind=pr), dimension(1:2), intent (in)  :: point1, point2, v1, v2
+  real (kind=pr), intent (in) :: p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y
+  real (kind=pr), dimension(1:2) :: point1, point2, v1, v2
   real (kind=pr), dimension(1:2) :: point1_star, point2_star
   real (kind=pr) :: t_star, dx, dy, R, x_star, y_star, temp, alpha
   integer :: xmax, xmin, ymax, ymin, i, j
 
+  point1(1) = p1x
+  point1(2) = p1y
+  point2(1) = p2x
+  point2(2) = p2y
+  v1(1) = v1x
+  v1(2) = v1y
+  v2(1) = v2x
+  v2(2) = v2y
+  
   !--------------------------------------------------------------
   ! This routine draws a smooth rectangle under an arbitrary angle
   ! defined by the two points.
