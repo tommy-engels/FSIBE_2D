@@ -52,25 +52,26 @@ program dns
   !@@@     galilean change of reference frame    
   !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
   elseif (iMultiRes==5) then
-      write (*,*) "*** Information: iMultiRes==5 (Gallilean run)"
-      !----------------------------
-      ! fixed beam
-      !------------------------------
-      dir_name='./mvt'
-      simulation_name=trim(simulation_name_org)//'_mvt.'
-      iFSI = 3
-      iMeanVelocity = 4
-      
-      call StartSimulation() 
-      !----------------------------
-      ! moving beam
-      !------------------------------
-      dir_name='./fix'
-      simulation_name=trim(simulation_name_org)//'_fix.'
-      iFSI=0
-      iMeanVelocity=3
-      
-      call StartSimulation()        
+!       write (*,*) "*** Information: iMultiRes==5 (Gallilean run)"
+!       !----------------------------
+!       ! fixed beam
+!       !------------------------------
+!       dir_name='./mvt'
+!       simulation_name=trim(simulation_name_org)//'_mvt.'
+!       iFSI = 3
+!       iMeanVelocity = 4
+!       
+!       call StartSimulation() 
+!       !----------------------------
+!       ! moving beam
+!       !------------------------------
+!       dir_name='./fix'
+!       simulation_name=trim(simulation_name_org)//'_fix.'
+!       iFSI=0
+!       iMeanVelocity=3
+!       
+!       call StartSimulation()    
+write (*,*) "to do, fix me here..:"
   !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
   !@@@     batch runs, always starting at T=0, not with coarse-to-fine
   !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      

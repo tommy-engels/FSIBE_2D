@@ -53,21 +53,13 @@ subroutine InitBeamFiles()
       close (14)
   endif
   
-  !----------------------------------------------------------------------------------------------------------------------------
-  if (iFSI==8) then
-      open (14, file = trim(dir_name)//'/'//trim(simulation_name)//'cylinder', status = 'replace')
-      call WriteHeaderToFile(14)
-      write (14,'(A)') " %         time     timestep       position x      position y      velocity x      velocity y    acceleration x  acceleration y     force x        force y        force_unst x    force_unst y"
-      close (14)
-  endif
-  !----------------------------------------------------------------------------------------------------------------------------
   
-!   if (iFSI==2) then
+  if (iMotion==2) then
       open (14, file = trim(dir_name)//'/'//trim(simulation_name)//'mouvement', status = 'replace')
       call WriteHeaderToFile(14)
       write (14,'(A)') " %         time  alpha           alpha_t         alpha_tt        x-pos           y-pos           x-vel          y-vel            x-accel        y-accel"
       close (14)    
-!   endif 
+  endif 
     !----------------------------------------------------------------------------------------------------------------------------
     open  (10, file = trim(dir_name)//'/STOP_SIMULATION', status = 'replace')
     write (10, *) "00 = iStop. Set 99 to interupt the simulation at the next drag interval."
@@ -246,11 +238,11 @@ subroutine SaveBeamData( time, beam, bpressure, dt1, q, ROC, Forces, force_press
   
   
   
-!   if (iFSI>2) then 
+  if (iMotion>0) then 
     open (14, file = trim(dir_name)//'/'//trim(simulation_name)//'mouvement', status = 'unknown', access = 'append')
     write (14, '(10(es15.8,1x))') time, alpha, alpha_t, alpha_tt, (LeadingEdge(n), n=1,6)
     close (14)
-!   end if 
+  end if 
 
 end subroutine SaveBeamData
 

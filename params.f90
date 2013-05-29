@@ -19,12 +19,14 @@ subroutine params ()
   read *, mue
   read *, T_release 	!time to begin the release-process for the beam  
   read *, tau 	! duration for the soft-startup. during TAU, couppling is set from 0 to 1 by a second degree polynome.
-  read *, iFSI
   read *, AngleBeam
   read *, grav
   read *, iImpulse
   read *, sigma
   read *, TimeMethodSolid
+  read *, dummy !----------------
+  read *, iFLUSI
+  read *, iMotion
   read *, dummy !----------------
   read *, iCylinder
   read *, iWalls
@@ -60,7 +62,6 @@ subroutine params ()
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   read *, dummy !----------------
   read *, inicond
-  read *, iIteration
   read *, iMultiRes
   read *, dummy !----------------
   read *, xl
@@ -91,23 +92,21 @@ subroutine params ()
   stop
   endif
 
-  if ( (ns<32).and.((iFSI==1).or.(iFSI==10)) ) then
+  if ( (ns<32).and.(iFLUSI==1)) then
     call DisplayError
     write(*,*) "??? you set ns<32 and you want to do FSI. this is probably not enough, please correct this"
-  stop
+    stop
   endif 
   
-  if ((iSaveBeam==0).and.(iFSI==1)) then
+  if ((iSaveBeam==0).and.(iFLUSI==1)) then
     call DisplayError
     write (*,*) " ??? You want to compute FSI without storing the beam data? Really?"
     write (*,*) " I won't cry and abandon, but that's strange you admit."
+    stop
   endif
   
-  if (iIteration==0) write(*,*) "*** Sequential Staggered Algorithm"
-  if (iIteration==1) write(*,*) "*** Iteration Algorithm"
-  if ((iIteration.ne.0).and.(iIteration.ne.1)) then 
-    call DisplayError
-    write(*,*) "!!! Error: Wrong choice of algorithm (iIteration)"
+  if ((iFLUSI==1).and.(iBeam==0)) then
+    write (*,*) "error: FSI without beam? bullshit!"
     stop
   endif
 
@@ -120,11 +119,6 @@ subroutine params ()
     write (*,*) "!!! PARAMS: you didn't set any flag for the mask. "
   endif
 
-  if ( (iMeanVelocity==4).and.(iFSI==0).and.(inicond==1) ) then
-    call DisplayError
-    write (*,*) "!!! PARAMS: fluid at rest and a fixed obstacle? That is completely senseless... "
-    stop
-  endif
 
   if     (TimeMethodSolid == EulerImplicit) then
   write(*,'(A)') " $$$ The solid solver is using EulerImplicit "
@@ -164,9 +158,9 @@ subroutine params ()
   endif
 
   
-  if (checksum .ne. 555.) then
+  if (checksum .ne. 707.) then
    call DisplayError
-   write(*,*) "!!! bad params-file! the checksum number should be 555"
+   write(*,*) "!!! bad params-file! the checksum number should be 707"
    stop
   endif
   theta_inf = theta_inf * pi/180.0 
@@ -176,7 +170,7 @@ subroutine params ()
 !    stop
   endif 
   
-  if (((iFSI==1).or.(iFSI>9)).and.(iSaveBeam==0)) then
+  if ((iFLUSI==1).and.(iSaveBeam==0)) then
   write (*,*) "??? you simulate FSI without saving the beam data. That seems likely to be not what you intended"
   iSaveBeam = 3
   endif
@@ -199,12 +193,6 @@ subroutine params ()
   simulation_name=trim(simulation_name)
   simulation_name_org=simulation_name !copy the name (for multi-res batch runs!)
 
-  if ((iFSI.ne.1).and.(iFSI.ne.10).and.(iIteration==1)) then
-    call DisplayError
-    write (*,*) "!!! I'm really sorry but the combination of iFSI and iIteration does not make sense. I'm sure you err and I abort now."
-    stop
-  endif
-  
 
   if ((iWalls==1).and.(theta_inf.ne.0.0)) then
     call DisplayError
@@ -217,12 +205,11 @@ subroutine params ()
     sharp=.true.
   endif
   
-  if ( (iSaveBeam.ne.0).and.( (iFSI==0).or.(iFSI==2).or.(iFSI==3).or.(iFSI==8) ) ) then
+  if ( (iSaveBeam.ne.0).and.(iFLUSI==0) )then
       open  (10, file = 'WARNINGS', status = 'replace')
       write (10,*)   " you save the beam; therefore at every time step will compute the pressure, although this is not nessesairy"
       write (10,*)   " you can save time by setting iSaveBeam=0"
       close (10)
-      
   endif
   
 end subroutine params

@@ -8,72 +8,70 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge)
   real (kind=pr) :: y_max, tau2, k, kt, ktt,a,b,c,d, y,yt,ytt
   integer :: n
 
-  select case (iFSI)
-    case (0:1,9) ! fixed beam (no mouvement, but possibly FSI)
-    
-!--------------------------------------------------------------------------------------------------------
-! fixed
-!--------------------------------------------------------------------------------------------------------    
+  select case (iMotion)
+    case (0) ! fixed beam (no leading edge mouvement)    
+      !--------------------------------------------------------------------------------------------------------
+      ! fixed
+      !--------------------------------------------------------------------------------------------------------    
       LeadingEdge = 0.0
       LeadingEdge(1) = x0
       LeadingEdge(2) = y0
       alpha    = AngleBeam*pi/180.0
       alpha_t  = 0.0
       alpha_tt = 0.0
+    case (1)
+      !--------------------------------------------------------------------------------------------------------
+      ! heaving: soft-startup version
+      !--------------------------------------------------------------------------------------------------------
+      y_max = 0.5
+      t_max = 1.4 
+     
+      if (time <= 1.0) then
+	a = -20.0; b= 70.0; c=-84.0; d=35.0;
+	k    = a*time**7 + b*time**6 + c*time**5 + d*time**4
+	kt  = 7.0*a*time**6 + 6.0*b*time**5 + 5.0*c*time**4 + 4.0*d*time**3
+	ktt = 42.*a*time**5 + 30.*b*time**4 + 20.*c*time**3 + 12.*d*time**2	
+      else
+	k   = 1.0
+	kt  = 0.0
+	ktt = 0.0
+      endif
+      
+      y   = y_max*sin(2.0*pi*time/t_max+pi/2.)
+      yt  = y_max*(2.0*pi/t_max)*cos(2.0*pi*time/t_max+pi/2.)
+      ytt =-y_max*(2.0*pi/t_max)**2*sin(2.0*pi*time/t_max+pi/2.)       
 
-
-!--------------------------------------------------------------------------------------------------------
-! heaving: soft-startup version
-! !--------------------------------------------------------------------------------------------------------
-!       y_max = 0.5
-!       t_max = 1.4 
-!      
-!       if (time <= 1.0) then
-! 	a = -20.0; b= 70.0; c=-84.0; d=35.0;
-! 	k    = a*time**7 + b*time**6 + c*time**5 + d*time**4
-! 	kt  = 7.0*a*time**6 + 6.0*b*time**5 + 5.0*c*time**4 + 4.0*d*time**3
-! 	ktt = 42.*a*time**5 + 30.*b*time**4 + 20.*c*time**3 + 12.*d*time**2	
-!       else
-! 	k   = 1.0
-! 	kt  = 0.0
-! 	ktt = 0.0
-!       endif
-!       
-!       y   = y_max*sin(2.0*pi*time/t_max+pi/2)
-!       yt  = y_max*(2.0*pi/t_max)*cos(2.0*pi*time/t_max+pi/2)
-!       ytt =-y_max*(2.0*pi/t_max)**2*sin(2.0*pi*time/t_max+pi/2) 
-!       
-! 
-!       LeadingEdge = 0.0
-!       LeadingEdge(1) = x0 
-!       LeadingEdge(2) = y0 + k*y
-!       LeadingEdge(3) = 0.0
-!       LeadingEdge(4) = kt*y + yt*k
-!       LeadingEdge(5) = 0.0
-!       LeadingEdge(6) = ktt*y + ytt*k + 2.*kt*yt
-!       
-!       alpha=AngleBeam*pi/180.0
-!       alpha_t=0.0
-!       alpha_tt=0.0
-!--------------------------------------------------------------------------------------------------------
-! heaving
-!--------------------------------------------------------------------------------------------------------      
-!       y_max = 0.5
-!       t_max = 2.5
-!       LeadingEdge = 0.0
-!       LeadingEdge(1) = x0 
-!       LeadingEdge(2) = y0+y_max*sin(2.0*pi*time/t_max+pi/2)
-!       LeadingEdge(3) = 0.0
-!       LeadingEdge(4) = y_max*(2.0*pi/t_max)*cos(2.0*pi*time/t_max+pi/2)
-!       LeadingEdge(5) = 0.0
-!       LeadingEdge(6) = -y_max*(2.0*pi/t_max)**2*sin(2.0*pi*time/t_max+pi/2)
-!       alpha=AngleBeam*pi/180.0
-!       alpha_t=0.0
-!       alpha_tt=0.0
-!--------------------------------------------------------------------------------------------------------
-! flapping
-!--------------------------------------------------------------------------------------------------------      
-
+      LeadingEdge = 0.0
+      LeadingEdge(1) = x0 
+      LeadingEdge(2) = y0 + k*y
+      LeadingEdge(3) = 0.0
+      LeadingEdge(4) = kt*y + yt*k
+      LeadingEdge(5) = 0.0
+      LeadingEdge(6) = ktt*y + ytt*k + 2.*kt*yt
+      
+      alpha=AngleBeam*pi/180.0
+      alpha_t=0.0
+      alpha_tt=0.0
+    case (2)
+      !--------------------------------------------------------------------------------------------------------
+      ! heaving
+      !--------------------------------------------------------------------------------------------------------      
+      y_max = 0.5
+      t_max = 2.5
+      LeadingEdge = 0.0
+      LeadingEdge(1) = x0 
+      LeadingEdge(2) = y0+y_max*sin(2.0*pi*time/t_max+pi/2)
+      LeadingEdge(3) = 0.0
+      LeadingEdge(4) = y_max*(2.0*pi/t_max)*cos(2.0*pi*time/t_max+pi/2)
+      LeadingEdge(5) = 0.0
+      LeadingEdge(6) = -y_max*(2.0*pi/t_max)**2*sin(2.0*pi*time/t_max+pi/2)
+      alpha=AngleBeam*pi/180.0
+      alpha_t=0.0
+      alpha_tt=0.0
+    case (3)
+      !--------------------------------------------------------------------------------------------------------
+      ! flapping
+      !--------------------------------------------------------------------------------------------------------      
       angle_max = 80.0*pi/180.d0
       f = 0.5d0 ! frequency
       
@@ -84,22 +82,34 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge)
       alpha    = angle_max * sin(2.d0*pi*f*time)
       alpha_t  = angle_max * cos(2.d0*pi*f*time) * (2.d0*pi*f)
       alpha_tt = -1.d0 * angle_max * sin(2.d0*pi*f*time) * (2.d0*pi*f)**2
-      
-
-    case (2,10) ! flapping motion (10: with active FSI coupling)
-      !--------------------------------------------------------------------------------------------------------
-      ! flapping
-      !--------------------------------------------------------------------------------------------------------          
-      angle_max = AngleBeam*pi/180.d0
-      f = 1.d0 ! frequency
-      
-      LeadingEdge = 0.d0
-      LeadingEdge(1) = x0
+    case (4) 
+      !--------------------------
+      ! implusive translation
+      !--------------------------
+      u0 = -1.0
+      LeadingEdge = 0.0
+      LeadingEdge(1) = x0 + u0*time
+      LeadingEdge(3) = u0 ! leading edge velocity
       LeadingEdge(2) = y0
-      
-      alpha    = angle_max * sin(2.d0*pi*f*time)
-      alpha_t  = angle_max * cos(2.d0*pi*f*time) * (2.d0*pi*f)
-      alpha_tt = -1.d0 * angle_max * sin(2.d0*pi*f*time) * (2.d0*pi*f)**2
+      LeadingEdge(4) = 0.0
+      alpha=AngleBeam*pi/180.0
+      alpha_t=0.0
+      alpha_tt=0.0
+
+!     case (2,10) ! flapping motion (10: with active FSI coupling)
+!       !--------------------------------------------------------------------------------------------------------
+!       ! flapping
+!       !--------------------------------------------------------------------------------------------------------          
+!       angle_max = AngleBeam*pi/180.d0
+!       f = 1.d0 ! frequency
+!       
+!       LeadingEdge = 0.d0
+!       LeadingEdge(1) = x0
+!       LeadingEdge(2) = y0
+!       
+!       alpha    = angle_max * sin(2.d0*pi*f*time)
+!       alpha_t  = angle_max * cos(2.d0*pi*f*time) * (2.d0*pi*f)
+!       alpha_tt = -1.d0 * angle_max * sin(2.d0*pi*f*time) * (2.d0*pi*f)**2
       !--------------------------------------------------------------------------------------------------------
       ! flapping, soft startup version
       !--------------------------------------------------------------------------------------------------------      
@@ -124,19 +134,11 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge)
       
       
       
-    case (3) ! impulsive translation
-      u0 = -1.0
-      LeadingEdge = 0.0
-      LeadingEdge(1) = x0 + u0*time
-      LeadingEdge(3) = u0 ! leading edge velocity
-      LeadingEdge(2) = y0
-      LeadingEdge(4) = 0.0
-      alpha=AngleBeam*pi/180.0
-      alpha_t=0.0
-      alpha_tt=0.0
-    case (101:107) !eldrege kinematics, case 1
-    write(*,*) "edrege won't work as mouvement is called sveral times per time step..."
-    stop
+!     case (3) ! impulsive translation
+!       
+!     case (101:107) !eldrege kinematics, case 1
+!     write(*,*) "edrege won't work as mouvement is called sveral times per time step..."
+!     stop
 !       sigma_r=0.628
 !       sigma_t=0.628
 !       phi=0.0

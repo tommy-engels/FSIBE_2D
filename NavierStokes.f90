@@ -338,7 +338,7 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   ! for fixed beams (like the CFD test) it is not nessesairy to compute the pressure, so we skip what follows.
   !------------------------------------------------
   
-  if ((iBeam>0).and.(iFSI>0).or.(iSaveBeam>0)) then     
+  if ((iFLUSI==1).or.(iSaveBeam>0)) then     
       !------------------------------------------------
       ! DIVERGENCE of penalty term
       !------------------------------------------------
@@ -563,12 +563,6 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
     ixmin = int( min( (LeadingEdge(1)-max(2.5*r_cylinder, 4.0*t_beam)), (minval(beam(:,1))-4.0*t_beam) )  /dx)
     ! even if the beam is hanging, its minimum x value is the leading edge
     ixmax = int( (maxval(beam(:,1))+4.0*t_beam)  /dx)
-  elseif ( (iBeam==0).and.(iCylinder==1).and.(iFSI.ne.8) ) then 
-    ! note that in this case, the center of the cylinder is NOT at the leading edge!
-    iymax=nint((LeadingEdge(2)+7.1*R_cylinder)/dy)
-    iymin=nint((LeadingEdge(2)-7.1*R_cylinder)/dy)
-    ixmax=nint((LeadingEdge(1)+7.1*R_cylinder)/dx)
-    ixmin=nint((LeadingEdge(1)-7.1*R_cylinder)/dx)
   else
     iymax=ny-1
     iymin=0

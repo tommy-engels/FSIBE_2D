@@ -5,12 +5,12 @@ module share_vars
 
   character (len=40) :: simulation_name, dir_name, simulation_name_org, inicond_file
   integer, save :: nx, ny,ns, iMeanVelocity, iSpongeType, nPalettes=14, iMultiRes
-  integer, save :: idealis, ihypvisc, inicond, iobst, iSponge, iFSI, iBeam, iWalls, iCylinder, iImpulse
+  integer, save :: idealis, ihypvisc, inicond, iobst, iSponge, iBeam, iWalls, iCylinder, iImpulse
   !!!!!!!!!!!
   integer, save :: iFLUSI, iMotion
   !!!!!!!!!!!
   ! save switches
-  integer, save :: iSaveBeam, iSaveMask, iSaveMaskVel, iSaveSTR, iSavePress, iSaveVel, iSaveVort, iIteration, iSaveStress
+  integer, save :: iSaveBeam, iSaveMask, iSaveMaskVel, iSaveSTR, iSavePress, iSaveVel, iSaveVort, iSaveStress
   integer, dimension (10), save :: ifaxx, ifaxy
   real (kind=pr), save :: cfl, nu, eps, pi, scalex, scaley, length, xl, yl, eta, mue, t_beam, N_smooth, h_channel, AngleBeam
   real (kind=pr), save :: U_mean_true, theta_inf, ds, T_release, tau, dt_fixed, sigma, R_cylinder, Time_end, SpongeSize, T_fullspeed

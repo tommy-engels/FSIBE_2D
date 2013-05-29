@@ -125,7 +125,7 @@ subroutine time_step
       !------------------------------------------------------------------------------------------------------------------
       ! step one: create_mask. nessesairy if the beam moves and if there is a velocity sponge with time-dependend mean velocity
       !------------------------------------------------------------------------------------------------------------------
-      if (((iSponge==4).and.(time<T_fullspeed)).or.(iFSI>0)) call create_mask( time, beam )
+      if (((iSponge==4).and.(time<T_fullspeed)).or.(iFLUSI==1).or.(iMotion>0)) call create_mask( time, beam )
       !--------------------------------------------------------------------------------------------------------------------
       ! step two: solve navier-stokes (always)
       !--------------------------------------------------------------------------------------------------------------------
@@ -133,22 +133,21 @@ subroutine time_step
       !--------------------------------------------------------------------------------------------------------------------
       ! step three: get forces. required for FSI runs or if you wish to save the forces
       !--------------------------------------------------------------------------------------------------------------------
-      if ( ((iFSI==1).and.(iBeam==1))  .or. (iSaveBeam>0)  ) call GetForces  ( time, beam, bpressure_new, tau_beam_new, press, force_pressure,u )
+      if ((iFLUSI==1).or.(iSaveBeam>0)) call GetForces  ( time, beam, bpressure_new, tau_beam_new, press, force_pressure,u )
       !--------------------------------------------------------------------------------------------------------------------
       ! step four: get the new beam. either by imposed motion of by solving the beam eqn
       !--------------------------------------------------------------------------------------------------------------------
-      if (((iBeam>0).and.(iFSI>0)).or.(iFSI==8)) then
-      select case (iFSI)
-	case (1)   !----------fsi coupling
+      if (iFLUSI==1) then
+	  !-----------------------------
+	  ! active FSI coupling
+	  !-----------------------------
 	  call GravityImpulse(time)
-	  call SolidSolverWrapper( time, dt1 , beam, bpressure_old, bpressure_new, tau_beam_old, tau_beam_new)
-	case (2:3) !----------imposed motion only
+	  call SolidSolverWrapper( time, dt1 , beam, bpressure_old, bpressure_new, tau_beam_old, tau_beam_new) 	
+      elseif ((iFLUSI==0).and.(iMotion>0)) then
+	  !-----------------------------
+	  ! imposed motion only
+	  !-----------------------------
 	  call integrate_position (time, beam)
-	case (9)   !----------deflection: solve IBES with a constant pressure.
-	  call SolidSolverWrapper( time, dt1 , beam, bpressure_old*0.0+0.02, bpressure_new*0.0+0.02, , tau_beam_old, tau_beam_new)
-	case (10:200)  !----------- flapping foil with flexibility
-	  call SolidSolverWrapper( time, dt1 , beam, bpressure_old, bpressure_new, , tau_beam_old, tau_beam_new)
-      end select
       endif
      
 
@@ -183,7 +182,7 @@ subroutine time_step
 	! step one: create_mask. nessesairy if the beam moves and if there is a velocity sponge with time-dependend mean velocity
 	!------------------------------------------------------------------------------------------------------------------	    
 	time_mask = performance("start",2)
-	if (((iSponge==4).and.(time<T_fullspeed)).or.(iFSI>0)) call create_mask( time, beam )
+	if (((iSponge==4).and.(time<T_fullspeed)).or.(iFLUSI==1).or.(iMotion>0)) call create_mask( time, beam )
 	time_mask = performance("stop",2)
 	!--------------------------------------------------------------------------------------------------------------------
 	! step two: solve navier-stokes (always)
@@ -195,24 +194,23 @@ subroutine time_step
 	! step three: get forces. required for FSI runs or if you wish to save the forces
 	!--------------------------------------------------------------------------------------------------------------------
 	time_pressure=performance("start",3)
-	if ( ((iFSI==1).and.(iBeam==1))  .or. (iSaveBeam>0)  ) call GetForces  ( time, beam, bpressure_new, tau_beam_new,  press, force_pressure,u)
+	if ((iFLUSI==1).or.(iSaveBeam>0)) call GetForces  ( time, beam, bpressure_new, tau_beam_new,  press, force_pressure,u)
 	time_pressure=performance("stop",3)	    
 	!--------------------------------------------------------------------------------------------------------------------
 	! step four: get the new beam. either by imposed motion or by solving the beam eqn
 	!--------------------------------------------------------------------------------------------------------------------
 	time_solid=performance("start",4)
-	if (((iBeam>0).and.(iFSI>0)).or.(iFSI==8)) then
-	select case (iFSI)
-	  case (1)   !----------fsi coupling
+	if (iFLUSI==1) then
+	    !-----------------------------
+	    ! active FSI coupling
+	    !-----------------------------
 	    call GravityImpulse(time)
-	    call SolidSolverWrapper( time, dt1 , beam, bpressure_old, bpressure_new, tau_beam_old, tau_beam_new)
-	  case (2:3) !----------imposed motion only
+	    call SolidSolverWrapper( time, dt1 , beam, bpressure_old, bpressure_new, tau_beam_old, tau_beam_new) 	
+	elseif ((iFLUSI==0).and.(iMotion>0)) then
+	    !-----------------------------
+	    ! imposed motion only
+	    !-----------------------------
 	    call integrate_position (time, beam)
-	  case (9)   !----------deflection: solve IBES with a constant pressure.
-	    call SolidSolverWrapper( time, dt1 , beam, bpressure_old*0.0+0.02, bpressure_new*0.0+0.02, tau_beam_old, tau_beam_new)
-	  case (10:200)  !----------- flapping foil with flexibility
-	    call SolidSolverWrapper( time, dt1 , beam, bpressure_old, bpressure_new, tau_beam_old, tau_beam_new)		
-	end select
 	endif
 	time_solid=performance("stop",4)   
 
@@ -257,7 +255,7 @@ subroutine time_step
 	    end where
 
 
-	    if ((iBeam>0).and.(iFSI>0).or.(iSaveBeam>0)) then 
+	    if ((iFLUSI==1).or.(iSaveBeam>0)) then 
 	    ! in these runs, the pressure is computed in every time step, so we can just save it
 	    else ! in other runs, we don't need the pressure, so we have to compute it here to make a snapshot
 	      call ComputePressureSnapshot(time, vortk(:,:,n1), press)
@@ -300,7 +298,7 @@ subroutine time_step
 	    !--   save fields
 	    !--------------------------------------------------------------------------------------------
 	    if (time-T_lastsave>tsave) then
-		if ((iBeam>0).and.(iFSI>0).or.(iSaveBeam>0)) then 
+		if ((iFLUSI==1).or.(iSaveBeam>0)) then 
 		! in these runs, the pressure is computed in every time step, so we can just save it
 		else ! in other runs, we don't need the pressure, so we have to compute it here to make a snapshot
 		  call ComputePressureSnapshot(time, vortk(:,:,n1), press)

@@ -73,7 +73,7 @@ subroutine create_mask ( time, beam )
   !--------------------------------------------------------------------------------
   !		Draw the cylinder
   !--------------------------------------------------------------------------------
-  if ((iCylinder==1).and.(iFSI.ne.8)) then  !usually the case for a cylinder at the leading edge
+  if (iCylinder==1) then  !usually the case for a cylinder at the leading edge
     call DrawADot( x0-R_cylinder, y0, 0.0, 0.0, R_cylinder, N)
   endif
 

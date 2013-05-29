@@ -392,7 +392,7 @@ subroutine GetForcesInterp(time, beam, pressure_beam, tau_beam, press, u, force_
   enddo   
   !$omp end parallel do
  
-  if ((iIteration == 0).and.(viscous_tensions)) then
+  if (viscous_tensions) then
     open (14, file = trim(dir_name)//'/'//trim(simulation_name)//'tau', status = 'unknown', access = 'append') ! Append output data file
     write (14,'(1x, 128(es15.8,1x))') time, (tau_beam(n), n=0,ns-1,4)
     close (14)
