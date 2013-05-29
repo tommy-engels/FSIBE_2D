@@ -57,12 +57,6 @@ subroutine params ()
   read *, iSpongeType
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   eps_sponge=eps
-!   eps_sponge=1e-1
-!   write(*,*) "WARNING SPONGE EPS!!!!!!!!!!!!!!"
-!   write(*,*) "WARNING SPONGE EPS!!!!!!!!!!!!!!"
-!   write(*,*) "WARNING SPONGE EPS!!!!!!!!!!!!!!"
-!   write(*,*) "WARNING SPONGE EPS!!!!!!!!!!!!!!"
-!   write(*,*) "WARNING SPONGE EPS!!!!!!!!!!!!!!"
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   read *, dummy !----------------
   read *, inicond
@@ -82,6 +76,9 @@ subroutine params ()
   read *, dummy !----------------
   read *, checksum
   read *, simulation_name
+  if (inicond == 111) then
+  read *, inicond_file
+  endif
   
   if (mod(nx,2)>0) then
     call DisplayError
@@ -117,7 +114,6 @@ subroutine params ()
   ! fixed values; unused
   ihypvisc = 0
   iobst = 1
-  imove = 2
   
   if ((iBeam==0).and.(iWalls==0).and.(iCylinder==0)) then
     call DisplayError

@@ -3,9 +3,12 @@ module share_vars
   integer, parameter :: pr = kind (0.d0) 
   
 
-  character (len=40) :: simulation_name, dir_name, simulation_name_org
+  character (len=40) :: simulation_name, dir_name, simulation_name_org, inicond_file
   integer, save :: nx, ny,ns, iMeanVelocity, iSpongeType, nPalettes=14, iMultiRes
-  integer, save :: idealis, ihypvisc, imove, inicond, iobst, iSponge, iFSI, iBeam, iWalls, iCylinder, iImpulse
+  integer, save :: idealis, ihypvisc, inicond, iobst, iSponge, iFSI, iBeam, iWalls, iCylinder, iImpulse
+  !!!!!!!!!!!
+  integer, save :: iFLUSI, iMotion
+  !!!!!!!!!!!
   ! save switches
   integer, save :: iSaveBeam, iSaveMask, iSaveMaskVel, iSaveSTR, iSavePress, iSaveVel, iSaveVort, iIteration, iSaveStress
   integer, dimension (10), save :: ifaxx, ifaxy

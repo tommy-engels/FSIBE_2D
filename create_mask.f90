@@ -3,10 +3,10 @@ subroutine create_mask ( time, beam )
   use share_vars
   use FieldExport
   implicit none
-  integer :: i, j, ymin, ymax,ix,iy
+  integer :: i, j, iymin, iymax,ix,iy
   real (kind=pr) :: mask_cutoff, dx, dy, a, b, volume, ds_inter, N, h_star, temp, alpha1,alpha2,gamma,ConvertAngle, sponge_size, sponge_size_star, tmp,x
   real (kind=pr) :: y_chan, H_effective, Mean_ux, Mean_uy
-  integer :: ixmax, ixmin, iymax, iymin, n_inter, n_subpoints
+  integer :: iixmax, iixmin, iiymax, iiymin, n_inter, n_subpoints
   real (kind=pr), intent (in) :: time
 ! Beam indices: 1=beam_x 2=beam_y 3=beam_vx 4=beam_vy 5=theta 6=theta_dot
   real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: beam
@@ -38,34 +38,34 @@ subroutine create_mask ( time, beam )
   !		Draw the walls
   !--------------------------------------------------------------------------------
   if (iWalls>0) then
-!       !-- bottom wall
-!       ymin = 0
-!       ymax = nint( h_star/ dy )
-!       !$omp parallel do private(j,temp)
-!       do j=ymin, ymax
-!         call SmoothStep(temp, real(j)*dy, h_channel, N*dy )
-!         mask(:,j)= temp
-!       enddo
-!       !$omp end parallel do
-!       
-!       !-- top wall
-!       ymin = nint( (yl-h_star)/dy)
-!       ymax = ny-1
-!       !$omp parallel do private(j,temp)
-!       do j=ymax,ymin,-1
-!         call SmoothStep(temp,abs( real(j)*dy-yl), h_channel, N*dy )
-!         mask(:,j)= temp
-!       enddo
-!       !$omp end parallel do
+      !-- bottom wall
+      iymin = 0
+      iymax = nint( h_star/ dy )
+      !$omp parallel do private(j,temp)
+      do j=iymin, iymax
+        call SmoothStep(temp, real(j)*dy, h_channel, N*dy )
+        mask(:,j)= temp
+      enddo
+      !$omp end parallel do
+      
+      !-- top wall
+      iymin = nint( (yl-h_star)/dy)
+      iymax = ny-1
+      !$omp parallel do private(j,temp)
+      do j=iymax,iymin,-1
+        call SmoothStep(temp,abs( real(j)*dy-yl), h_channel, N*dy )
+        mask(:,j)= temp
+      enddo
+      !$omp end parallel do
 
       !------------------------------------
       ! modified version (sharp walls!)
       !------------------------------------
-      ymin = nint ( h_channel / dy ) + 1 ! note we set the actual BC to one
-      ymax = nint ( (yl-h_channel) / dy ) - 1 ! note we set the actual BC to one
-      
-      mask = 1.0      
-      mask(:,ymin:ymax) = 0.0
+!       iymin = nint ( h_channel / dy ) + 1 ! note we set the actual BC to one
+!       iymax = nint ( (yl-h_channel) / dy ) - 1 ! note we set the actual BC to one
+!       
+!       mask = 1.0      
+!       mask(:,iymin:iymax) = 0.0
       
       
   endif
@@ -81,20 +81,19 @@ subroutine create_mask ( time, beam )
   !--------------------------------------------------------------------------------
   !		Draw the beam
   !--------------------------------------------------------------------------------
-
   if (iBeam>0) then
     !---- Draw beam segments
     do i=0, ns-2
-      call DrawBeamSegment( beam(i,1), beam(i,2),&
-	  beam(i+1,1),beam(i+1,2),&
-	  beam(i,3)  ,beam(i,4),&
-	  beam(i+1,3),beam(i+1,4),&
-	  t_beam, N )
+      call DrawBeamSegment( beam(i,1),  beam(i,2),&
+			    beam(i+1,1),beam(i+1,2),&
+			    beam(i,3)  ,beam(i,4),&
+			    beam(i+1,3),beam(i+1,4),&
+			    t_beam, N )
     enddo
     
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (Mask_end==1) then
-      call DrawSharpEnd( beam(ns-1,1:2), -(beam(ns-1,5)+alpha), beam(ns-1,3:4),t_beam, N )
+      call DrawSharpEnd( beam(ns-1,1:2), beam(ns-1,5)+alpha, beam(ns-1,3:4),t_beam, N )
     endif
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
     
@@ -124,72 +123,76 @@ subroutine create_mask ( time, beam )
   ! let's keep it like this.
 
     if (iSponge==4) then
-!       sponge_size_star = SpongeSize ! what you set is the effective sponge size
-!       sponge_size = SpongeSize - 2.0*N*dx   !"core" size of the sponge
-!       H_effective = yl-2.0*h_channel
-! 
-!       !-----------------------------------------------left half of the sponge
-!       ixmax=nint ((0.5*sponge_size_star)/dx)
-!       ixmin=0
-!       !$omp parallel do private(ix,iy,y_chan,tmp,x)
-!       do ix=ixmin, ixmax
-!       do iy=0,ny-1
-!         y_chan = (real(iy)*dy-h_channel)
-!         x = 0.75*sponge_size_star - real(ix)*dx
-! !        call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) ) !for a transition based on the smoothing layer thickness
-!         call SmoothStep (tmp, x, sponge_size*0.5, 0.25*sponge_size )
-!         if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
-!         ! set parabolic velocity profile
-!         if ((y_chan>0.0).and.(y_chan<H_effective)) then
-!           ! attention: the maximum velocity here is always 1, but the mean velocity is smaller!
-!           maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
-!         else
-!           maskvx(ix,iy) =  0.0
-!         endif
-!       enddo
-!       enddo
-!       !$omp end parallel do
-! 
-!       !-----------------------------------------------right half of the sponge
-!       ixmin=nint ((0.5*sponge_size_star)/dx)
-!       ixmax=nint ((1.0*sponge_size_star)/dx)
-!       !$omp parallel do private(ix,iy,y_chan,tmp,x)
-!       do ix=ixmin, ixmax
-!       do iy=0,ny-1
-!         y_chan = (real(iy)*dy-h_channel)
-!         x = real(ix)*dx - 0.5*sponge_size_star
-!         call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
-!         if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
-!         ! set parabolic velocity profile
-!         if ((y_chan>0.0).and.(y_chan<H_effective)) then
-!           ! attention: the velocity here is always 1, but the mean velocity is smaller!
-! 	  maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
-!         else
-!           maskvx(ix,iy) =  0.0
-!         endif
-!       enddo
-!       enddo
-!       !$omp end parallel do
+      sponge_size_star = SpongeSize ! what you set is the effective sponge size
+      sponge_size = SpongeSize - 2.0*N*dx   !"core" size of the sponge
+      H_effective = yl-2.0*h_channel
+
+      !-------------------------
+      !--left half of the sponge
+      !-------------------------
+      iixmax=nint ((0.5*sponge_size_star)/dx)
+      iixmin=0
+      !$omp parallel do private(ix,iy,y_chan,tmp,x)
+      do ix=iixmin, iixmax
+      do iy=0,ny-1
+        y_chan = (real(iy)*dy-h_channel)
+        x = 0.75*sponge_size_star - real(ix)*dx
+!        call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) ) !for a transition based on the smoothing layer thickness
+        call SmoothStep (tmp, x, sponge_size*0.5, 0.25*sponge_size )
+        if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
+        ! set parabolic velocity profile
+        if ((y_chan>0.0).and.(y_chan<H_effective)) then
+          ! attention: the maximum velocity here is always 1, but the mean velocity is smaller!
+          maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+        else
+          maskvx(ix,iy) =  0.0
+        endif
+      enddo
+      enddo
+      !$omp end parallel do
+      
+      !-------------------------
+      !--right half of the sponge
+      !-------------------------
+      iixmin=nint ((0.5*sponge_size_star)/dx)
+      iixmax=nint ((1.0*sponge_size_star)/dx)
+      !$omp parallel do private(ix,iy,y_chan,tmp,x)
+      do ix=iixmin, iixmax
+      do iy=0,ny-1
+        y_chan = (real(iy)*dy-h_channel)
+        x = real(ix)*dx - 0.5*sponge_size_star
+        call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
+        if (mask(ix,iy)<tmp) mask(ix,iy)=tmp
+        ! set parabolic velocity profile
+        if ((y_chan>0.0).and.(y_chan<H_effective)) then
+          ! attention: the velocity here is always 1, but the mean velocity is smaller!
+	  maskvx(ix,iy) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+        else
+          maskvx(ix,iy) =  0.0
+        endif
+      enddo
+      enddo
+      !$omp end parallel do
       
       !----------------------------
       ! modified version, sharp mask function     
       !----------------------------
-      ixmin = 0
-      ixmax = nint (SpongeSize/dx)
-      H_effective = yl-2.0*h_channel
-      
-      !$omp parallel do private (iy,y_chan)
-      do iy=0,ny-1
-        y_chan = (real(iy)*dy-h_channel)        
-        ! set parabolic velocity profile
-        if ((y_chan>0.0).and.(y_chan<H_effective)) then
-	  maskvx( ixmin:ixmax,iy ) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
-        else
-          maskvx( ixmin:ixmax,iy ) =  0.0
-        endif        
-	mask ( ixmin:ixmax, iy ) = 1.0
-      enddo
-      !$omp end parallel do
+!       iixmin = 0
+!       iixmax = nint (SpongeSize/dx)
+!       H_effective = yl-2.0*h_channel
+!       
+!       !$omp parallel do private (iy,y_chan)
+!       do iy=0,ny-1
+!         y_chan = (real(iy)*dy-h_channel)        
+!         ! set parabolic velocity profile
+!         if ((y_chan>0.0).and.(y_chan<H_effective)) then
+! 	  maskvx( iixmin:iixmax, iy ) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+!         else
+!           maskvx( iixmin:iixmax, iy ) =  0.0
+!         endif        
+! 	mask ( iixmin:iixmax, iy ) = 1.0
+!       enddo
+!       !$omp end parallel do
       
    endif
    
@@ -216,7 +219,7 @@ subroutine create_sponge_mask()
   implicit none
   real (kind=pr) :: dy,dx,sponge_begin, epsilon_sponge
   real (kind=pr) :: sponge_size, tmp,x, N, sponge_size_star,tmp1,tmp2,tmp3,tmp4
-  integer :: ix, ixmin, ixmax, iy
+  integer :: ix, iixmin, iixmax, iy
 
   epsilon_sponge=eps_sponge
   N=N_smooth !smoothing layer thickness
@@ -229,18 +232,18 @@ subroutine create_sponge_mask()
       sponge_size = sponge_size_star - 2.0*N*dx
       sponge_begin = xl - sponge_size_star
       ! left half of the sponge
-      ixmax=nint ((xl-0.5*sponge_size_star)/dx)
-      ixmin=nint (sponge_begin/dx)
-      do ix=ixmin, ixmax
+      iixmax=nint ((xl-0.5*sponge_size_star)/dx)
+      iixmin=nint (sponge_begin/dx)
+      do ix=iixmin, iixmax
 	x = xl-0.5*sponge_size_star - real(ix)*dx
 	call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
 	mask_sponge(ix,:)=tmp
       enddo
 
       !right half of the sponge
-      ixmin=nint ((xl-0.5*sponge_size_star)/dx)
-      ixmax=nx-1
-      do ix=ixmin, ixmax
+      iixmin=nint ((xl-0.5*sponge_size_star)/dx)
+      iixmax=nx-1
+      do ix=iixmin, iixmax
 	x = real(ix)*dx - xl +0.5*sponge_size_star-1.0*dx
 	call SmoothStep (tmp, x, sponge_size*0.4, N*real(dx) )
 	mask_sponge(ix,:)=tmp
@@ -251,24 +254,24 @@ subroutine create_sponge_mask()
       sponge_begin = xl - sponge_size_star
 
       ! left half of the sponge
-      ixmax=nint ((0.5*sponge_size_star)/dx)
-      ixmin=0
-      do ix=ixmin, ixmax
+      iixmax=nint ((0.5*sponge_size_star)/dx)
+      iixmin=0
+      do ix=iixmin, iixmax
         x = 0.5*sponge_size_star - real(ix)*dx
         call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
         mask_sponge(ix,:)=tmp
       enddo
 
       !right half of the sponge
-      ixmin=nint ((0.5*sponge_size_star)/dx)
-      ixmax=nint ((1.0*sponge_size_star)/dx)
-      do ix=ixmin, ixmax
+      iixmin=nint ((0.5*sponge_size_star)/dx)
+      iixmax=nint ((1.0*sponge_size_star)/dx)
+      do ix=iixmin, iixmax
         x = real(ix)*dx - 0.5*sponge_size_star
         call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
         mask_sponge(ix,:)=tmp
       enddo
 
-      do ix=0,ixmax
+      do ix=0,iixmax
       do iy=0,ny-1
         if (mask(ix,iy)*eps>0.0) mask_sponge(ix,iy)= mask_sponge(ix,iy)*(1.0-mask(ix,iy)*eps)
       enddo
@@ -378,25 +381,25 @@ subroutine DrawHinge (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
   implicit none
   real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
   real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle
-  integer :: xmax, xmin, ymax, ymin, i, j
+  integer :: ixmax, ixmin, iymax, iymin, i, j
 
   dx=xl/real(nx)
   dy=yl/real(ny)
   t_star = t + 10.*N*max(dx,dy) !effective beam thickness including the smoothing zone
-  xmin = nint( (pointx-t_star)/dx)
-  xmax = nint( (pointx+t_star)/dx)
-  ymin = nint( (pointy-t_star)/dy)
-  ymax = nint( (pointy+t_star)/dy)
+  ixmin = nint( (pointx-t_star)/dx)
+  ixmax = nint( (pointx+t_star)/dx)
+  iymin = nint( (pointy-t_star)/dy)
+  iymax = nint( (pointy+t_star)/dy)
 
-  xmin = max( xmin, 0)  
-  xmax = min( xmax,nx-1)
-  ymin = max( ymin, 0)  
-  ymax = min( ymax,ny-1)  
+  ixmin = max( ixmin, 0)  
+  ixmax = min( ixmax,nx-1)
+  iymin = max( iymin, 0)  
+  iymax = min( iymax,ny-1)  
   
 
-  !$omp parallel do private(i,j,R,gamma,temp)
-  do i=xmin, xmax
-    do j=ymin, ymax
+  
+  do i=ixmin, ixmax
+    do j=iymin, iymax
       R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
       gamma = (atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
 
@@ -414,7 +417,7 @@ subroutine DrawHinge (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
       endif
     enddo
   enddo
-  !$omp end parallel do
+  
 
 end subroutine DrawHinge
 
@@ -426,25 +429,25 @@ subroutine DrawEndpointLeft (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
   implicit none
   real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
   real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle
-  integer :: xmax, xmin, ymax, ymin, i, j
+  integer :: ixmax, ixmin, iymax, iymin, i, j
 
   dx=xl/real(nx)
   dy=yl/real(ny)
   t_star = t + N*max(dx,dy) !effective beam thickness including the smoothing zone
-  xmin = nint( (pointx-t_star)/dx)
-  xmax = nint( (pointx+t_star)/dx)
-  ymin = nint( (pointy-t_star)/dy)
-  ymax = nint( (pointy+t_star)/dy)
+  ixmin = nint( (pointx-t_star)/dx)
+  ixmax = nint( (pointx+t_star)/dx)
+  iymin = nint( (pointy-t_star)/dy)
+  iymax = nint( (pointy+t_star)/dy)
 
 
-  if ((xmin<0).or.(xmax>nx).or.(ymin<0).or.(ymax>ny)) then
+  if ((ixmin<0).or.(ixmax>nx).or.(iymin<0).or.(iymax>ny)) then
     write (*,*) "Mask:: Beam Hinge. Index out of region"
     stop
   endif
 
-!$omp parallel do private(i,j,R,gamma,temp)
-  do i=xmin, xmax
-    do j=ymin, ymax
+
+  do i=ixmin, ixmax
+    do j=iymin, iymax
       R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
       gamma = ConvertAngle(atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
       if (((R <= t_star).and.((gamma>=alpha1).and.(gamma<=alpha2))).or.(R<=max(dx,dy)))   then
@@ -461,7 +464,7 @@ subroutine DrawEndpointLeft (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
       endif
     enddo
   enddo
-!$omp end parallel do
+
 
 end subroutine DrawEndpointLeft
 
@@ -473,25 +476,25 @@ subroutine DrawEndpointRight (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
   implicit none
   real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
   real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle
-  integer :: xmax, xmin, ymax, ymin, i, j
+  integer :: ixmax, ixmin, iymax, iymin, i, j
 
   dx=xl/real(nx)
   dy=yl/real(ny)
   t_star = t + N*max(dx,dy) !effective beam thickness including the smoothing zone
-  xmin = nint( (pointx-t_star)/dx)
-  xmax = nint( (pointx+t_star)/dx)
-  ymin = nint( (pointy-t_star)/dy)
-  ymax = nint( (pointy+t_star)/dy)
+  ixmin = nint( (pointx-t_star)/dx)
+  ixmax = nint( (pointx+t_star)/dx)
+  iymin = nint( (pointy-t_star)/dy)
+  iymax = nint( (pointy+t_star)/dy)
 
 
-  if ((xmin<0).or.(xmax>nx).or.(ymin<0).or.(ymax>ny)) then
+  if ((ixmin<0).or.(ixmax>nx).or.(iymin<0).or.(iymax>ny)) then
     write (*,*) "Mask:: Beam Hinge. Index out of region"
     stop
   endif
 
-  !$omp parallel do private(i,j,R,gamma,temp)
-  do i=xmin, xmax
-    do j=ymin, ymax
+  
+  do i=ixmin, ixmax
+    do j=iymin, iymax
       R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
       gamma = (atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
       if (((R <= t_star).and.((gamma>=alpha1).and.(gamma<=alpha2))).or.(R<=max(dx,dy)))   then
@@ -499,14 +502,14 @@ subroutine DrawEndpointRight (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
 	if (temp>mask(i,j)) then
 	  mask(i,j) = temp !existing mask points are overwritten if they are smaller than the new one
 	  if (mask(i,j)>0.0) then ! if the mask is set there, give it a velocity
-	    maskvx(i,j)=vx!*mask(i,j)*eps
-	    maskvy(i,j)=vy!*mask(i,j)*eps
+	    maskvx(i,j)=vx
+	    maskvy(i,j)=vy
 	  endif
 	endif
       endif
     enddo
   enddo
-  !$omp end parallel do
+  
 end subroutine DrawEndpointRight
 
 !==============================================================================================================================================
@@ -523,24 +526,24 @@ subroutine DrawADot (pointx, pointy, vx, vy, t, N)
   !--------------------------------------------------------------------
   real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N
   real (kind=pr) :: t_star, dx, dy, R, temp
-  integer :: xmax, xmin, ymax, ymin, i, j
+  integer :: ixmax, ixmin, iymax, iymin, i, j
 
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 10.0*N*max(dx,dy) !effective beam thickness including the smoothing zone
-  xmin = 0!max( nint( (pointx-t_star)/dx), 0)
-  xmax = nx-1!min( nint( (pointx+t_star)/dx), nx)
-  ymin = 0!max( nint( (pointy-t_star)/dy), 0)
-  ymax = ny-1!min( nint( (pointy+t_star)/dy), ny)
+  t_star = t + 3.0*N*max(dx,dy) !effective beam thickness including the smoothing zone
+  ixmin = 0!max( nint( (pointx-t_star)/dx), 0)
+  ixmax = nx-1!min( nint( (pointx+t_star)/dx), nx)
+  iymin = 0!max( nint( (pointy-t_star)/dy), 0)
+  iymax = ny-1!min( nint( (pointy+t_star)/dy), ny)
 
-  if ((xmin<0).or.(xmax>nx-1).or.(ymin<0).or.(ymax>ny-1).or.(pointy<0.0)) then
+  if ((ixmin<0).or.(ixmax>nx-1).or.(iymin<0).or.(iymax>ny-1).or.(pointy<0.0)) then
     write (*,*) "Mask:: Beam Hinge. Index out of region"
     stop
   endif
 
   !$omp parallel do private(i,j,R,temp)
-  do i=xmin, xmax
-    do j=ymin, ymax
+  do i=ixmin, ixmax
+    do j=iymin, iymax
       R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
       call SmoothStep(temp, R, t, N*max(dx,dy) )
       if ( temp>mask(i,j) ) then!existing mask points are overwritten if they are smaller than the new one
@@ -551,11 +554,11 @@ subroutine DrawADot (pointx, pointy, vx, vy, t, N)
     enddo
   enddo
   !$omp end parallel do
+  
 end subroutine DrawADot
 
 !==============================================================================================================================================
-! call DrawBeamSegment( beam(i,1:2),beam(i+1,1:2), beam(i,3:4), beam(i+1,3:4), t_beam, N )
-! subroutine DrawBeamSegment ( point1, point2, v1, v2, t, N )
+
 subroutine DrawBeamSegment ( p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y, t, N )
   use share_vars
   implicit none
@@ -564,7 +567,7 @@ subroutine DrawBeamSegment ( p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y, t, N )
   real (kind=pr), dimension(1:2) :: point1, point2, v1, v2
   real (kind=pr), dimension(1:2) :: point1_star, point2_star
   real (kind=pr) :: t_star, dx, dy, R, x_star, y_star, temp, alpha
-  integer :: xmax, xmin, ymax, ymin, i, j
+  integer :: ixmax, ixmin, iymax, iymin, i, j
 
   point1(1) = p1x
   point1(2) = p1y
@@ -585,33 +588,35 @@ subroutine DrawBeamSegment ( p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y, t, N )
   !--------------------------------------------------------------
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 10.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
+  t_star = t + 3.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
   !real angle between the two points
-
-  alpha = -atan( (point2(2)-point1(2))/(point2(1)-point1(1)) )
+  
   alpha = -atan2( (point2(2)-point1(2)),(point2(1)-point1(1)) )
 
   !domain for calculation (to reduce comp. costs)
-  xmin = nint( (min(point1(1),point2(1))-t_star)/dx)
-  xmax = nint( (max(point1(1),point2(1))+t_star)/dx)
+  ixmin = nint( (min(point1(1),point2(1))-t_star)/dx)
+  ixmax = nint( (max(point1(1),point2(1))+t_star)/dx)
 
-  ymin = nint( (min(point1(2),point2(2))-t_star)/dy)
-  ymax = nint( (max(point1(2),point2(2))+t_star)/dy)
+  iymin = nint( (min(point1(2),point2(2))-t_star)/dy)
+  iymax = nint( (max(point1(2),point2(2))+t_star)/dy)
   
-  xmin = max( xmin, 0)  
-  xmax = min( xmax,nx-1)
-  ymin = max( ymin, 0)  
-  ymax = min( ymax,ny-1)  
+  ixmin = max( ixmin, 0)  
+  ixmax = min( ixmax,nx-1)
+  iymin = max( iymin, 0)  
+  iymax = min( iymax,ny-1)  
 
-  ! star points are in rotated coordinates
+  ! star points are in rotated coordinates 
+  !!!!!!!!!!
+  ! note there is a sign error. cf DrawSharpEnd
+  !!!!!!!!!!
   point1_star(1) = cos(alpha)*point1(1) - sin(alpha)*point1(2)
   point1_star(2) = sin(alpha)*point1(1) + cos(alpha)*point1(2)
   point2_star(1) = cos(alpha)*point2(1) - sin(alpha)*point2(2)
   point2_star(2) = sin(alpha)*point2(1) + cos(alpha)*point2(2)
 
-  !$omp parallel do private(i,j,x_star,y_star,temp)
-  do i=xmin, xmax
-    do j=ymin, ymax
+  
+  do i=ixmin, ixmax
+    do j=iymin, iymax
       x_star = real(i)*dx*cos(alpha) -real(j)*dy*sin(alpha)
       y_star = real(i)*dx*sin(alpha) +real(j)*dy*cos(alpha)
       if ((x_star>=point1_star(1)).and.(x_star<=point2_star(1)).and.(y_star<=(point1_star(2)+t_star)).and.(y_star>=(point2_star(2)-t_star))) then
@@ -625,65 +630,70 @@ subroutine DrawBeamSegment ( p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y, t, N )
       endif
     enddo
   enddo
-  !$omp end parallel do
+  
 end subroutine DrawBeamSegment
 
 
 
-
-subroutine DrawSharpEnd(point1, alpha, v,t,N)
+subroutine DrawSharpEnd(point_end, alpha, v,t,N)
   use share_vars
   implicit none
   real (kind=pr), intent (in)  :: N,t, alpha
-  real (kind=pr), dimension(1:2), intent (in)  :: point1, v
-  real (kind=pr), dimension(1:2) :: point1_star, point2_star, point2
+  real (kind=pr), dimension(1:2), intent (in)  :: point_end, v
+  real (kind=pr), dimension(1:2) :: point1_star, point2_star, point2, point1
   real (kind=pr) :: t_star, dx, dy, R, x_star, y_star, temp,tmp2 
-  integer :: xmax, xmin, ymax, ymin, i, j
+  integer :: ixmax, ixmin, iymax, iymin, i, j
 
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 10.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
+  t_star = t + 3.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
   
+  ! the first point lies INSIDE the beam
+  point1(1) = point_end(1) - 5.0*max(dx,dy) * cos(alpha)
+  point1(2) = point_end(2) - 5.0*max(dx,dy) * sin(alpha)
    
-  point2=point1
+  ! the second point lies OUTSIDE the beam 
+  point2(1) = point_end(1) + 5.0*max(dx,dy) * cos(alpha) 
+  point2(2) = point_end(2) + 5.0*max(dx,dy) * sin(alpha)
 
   !domain for calculation (to reduce comp. costs)
-  xmin = nint( (min(point1(1),point2(1))-t_star)/dx)
-  xmax = nint( (max(point1(1),point2(1))+t_star)/dx)
-  ymin = nint( (min(point1(2),point2(2))-t_star)/dy)
-  ymax = nint( (max(point1(2),point2(2))+t_star)/dy)  
+  ixmin = nint( (min(point1(1),point2(1))-t_star)/dx)
+  ixmax = nint( (max(point1(1),point2(1))+t_star)/dx)
+  iymin = nint( (min(point1(2),point2(2))-t_star)/dy)
+  iymax = nint( (max(point1(2),point2(2))+t_star)/dy)  
   
-  xmin = max( xmin, 0)  
-  xmax = min( xmax,nx-1)
-  ymin = max( ymin, 0)  
-  ymax = min( ymax,ny-1)  
+  ixmin = max( ixmin, 0)  ! ensure valid coordinates
+  ixmax = min( ixmax,nx-1)
+  iymin = max( iymin, 0)  
+  iymax = min( iymax,ny-1)  
 
-  ! star points are in rotated coordinates
-  point1_star(1) = cos(alpha)*point1(1) - sin(alpha)*point1(2)  - 2.0*max(dx,dy) ! start 2px earlier (inside the beam)
-  point1_star(2) = sin(alpha)*point1(1) + cos(alpha)*point1(2)
-  point2_star(1) = point1_star(1) + 20.0*(N + 1.0)*max(dx,dy)
-  point2_star(2) = point2_star(2) 
+  ! star points are in rotated coordinates (note: I think I corrected the sign error made in 2009 here)
+  point1_star(1) = cos(alpha)*point1(1) + sin(alpha)*point1(2)
+  point1_star(2) =-sin(alpha)*point1(1) + cos(alpha)*point1(2)
+  point2_star(1) = cos(alpha)*point2(1) + sin(alpha)*point2(2)
+  point2_star(2) =-sin(alpha)*point2(1) + cos(alpha)*point2(2)
 
-  !$omp parallel do private(i,j,x_star,y_star,temp,tmp2)
-  do i=xmin, xmax
-    do j=ymin, ymax
-      x_star = real(i)*dx*cos(alpha) -real(j)*dy*sin(alpha)
-      y_star = real(i)*dx*sin(alpha) +real(j)*dy*cos(alpha)
+    
+  do i=ixmin, ixmax
+    do j=iymin, iymax
+      x_star =  real(i)*dx*cos(alpha) + real(j)*dy*sin(alpha)
+      y_star = -real(i)*dx*sin(alpha) + real(j)*dy*cos(alpha)
+      
       if ((x_star>=point1_star(1)).and.(x_star<=point2_star(1)).and.(y_star<=(point1_star(2)+t_star)).and.(y_star>=(point2_star(2)-t_star))) then
-	call SmoothStep (temp, abs(y_star - point1_star(2)), t, N*max(dx,dy) )
-	call SmoothStep (tmp2, abs(x_star - point1_star(1)), (N+4.0)*max(dx,dy), N*max(dx,dy) )
+	! note we start earlier in the beam, therefore 'zero' is actually inside the beam, thus we HAVE a thickness
+	call SmoothStep (tmp2, x_star-point1_star(1), 2.0*max(dx,dy) , N*max(dx,dy) )
+	! this is smoothing in normal direction
+	call SmoothStep (temp, abs(y_star - point1_star(2)), t, N*max(dx,dy) )	
 	
-	temp=temp*tmp2
-	
-	if (temp>mask(i,j)) then
-	  mask(i,j) = temp 
-	  maskvx(i,j) = v(1)
-	  maskvy(i,j) = v(2)
-	endif
+	mask(i,j) = temp*tmp2
+	maskvx(i,j) = v(1)
+	maskvy(i,j) = v(2)
       endif
     enddo
   enddo
-  !$omp end parallel do
+  
+    
+  
 end subroutine DrawSharpEnd
 
 

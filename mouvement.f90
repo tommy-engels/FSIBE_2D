@@ -21,6 +21,7 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge)
       alpha_t  = 0.0
       alpha_tt = 0.0
 
+
 !--------------------------------------------------------------------------------------------------------
 ! heaving: soft-startup version
 ! !--------------------------------------------------------------------------------------------------------
@@ -73,16 +74,16 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge)
 ! flapping
 !--------------------------------------------------------------------------------------------------------      
 
-! ! !       angle_max = 30.0*pi/180.d0
-! ! !       f = 0.5d0 ! frequency
-! ! !       
-! ! !       LeadingEdge = 0.d0
-! ! !       LeadingEdge(1) = x0
-! ! !       LeadingEdge(2) = y0
-! ! !       
-! ! !       alpha    = angle_max * sin(2.d0*pi*f*time)
-! ! !       alpha_t  = angle_max * cos(2.d0*pi*f*time) * (2.d0*pi*f)
-! ! !       alpha_tt = -1.d0 * angle_max * sin(2.d0*pi*f*time) * (2.d0*pi*f)**2
+      angle_max = 80.0*pi/180.d0
+      f = 0.5d0 ! frequency
+      
+      LeadingEdge = 0.d0
+      LeadingEdge(1) = x0
+      LeadingEdge(2) = y0
+      
+      alpha    = angle_max * sin(2.d0*pi*f*time)
+      alpha_t  = angle_max * cos(2.d0*pi*f*time) * (2.d0*pi*f)
+      alpha_tt = -1.d0 * angle_max * sin(2.d0*pi*f*time) * (2.d0*pi*f)**2
       
 
     case (2,10) ! flapping motion (10: with active FSI coupling)

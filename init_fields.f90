@@ -7,7 +7,7 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
 ! This subroutine set up the inital flow which is normally
 ! a mean flow.
 !======================================================
-  integer :: ibackup, ix, iy
+  integer :: ibackup, ix, iy, nx_file, ny_file
   integer :: ierr = 0
   integer, intent (out) :: ivideo
   real (kind=pr) :: time1
@@ -35,6 +35,7 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
   dy 		= yl/real(ny)
   bpressure 	= 0.0
   tau_beam_old 	= 0.0
+  ivideo 	= 1 ! counter for the snapshots
   
   write (*,'(" --- inicond = ",i1)') inicond
 
@@ -44,7 +45,6 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
       vortk 		= 0.0
       workvis 		= 0.0
       u 		= 0.0
-      ivideo 		= 1 ! counter for the snapshots
   elseif (inicond == 2) then !==================================================================================================
       ! Read from backup file
       do ibackup = 0, 1
@@ -82,15 +82,34 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
       enddo
       vort = vort * (1.0-mask*eps) ! no initial vorticity inside solid region
       call coftxy(vort,vortk)
-      ivideo=1
   elseif (inicond == 99) then !==================================================================================================
       call coftxy( vor_init, vortk(:,:,1) ) ! in this scenario, mask_sponge contains the last vort field in a previous simulation, so just transform it
       call coftxy( vor_init, vortk(:,:,0) ) ! in this scenario, mask_sponge contains the last vort field in a previous simulation, so just transform it
       workvis=0.0
       call SaveGif (vor_init, trim(dir_name)//"/initial_condition")
       u=0.0
-      ivideo=1  
       time=time_init
+  elseif (inicond == 111) then
+      ! ------------------------------------
+      ! reads in a binary vorticity file.
+      ! ------------------------------------
+      if ( len_trim(inicond_file)==0 ) then
+        write (*,*) 'inicond_file not set.. suicide!'
+        stop
+      endif
+      
+      open (10, file=trim(inicond_file), form='unformatted', status='old')
+      read (10) nx_file, ny_file, vort
+      close (10)
+      
+      if ((nx_file==nx).and.(ny_file==ny)) then
+	  call coftxy(vort,vortk)
+	  call cal_velocity(0.d0, vortk, u, vort )
+      else
+	  write (*,*) 'inicond field resolution does not match present resolution. suicide!'
+	  stop
+      endif
+      
   elseif (inicond==4) then
       vort = 0.d0
       do ix=0,nx-1

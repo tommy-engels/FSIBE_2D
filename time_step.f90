@@ -133,7 +133,7 @@ subroutine time_step
       !--------------------------------------------------------------------------------------------------------------------
       ! step three: get forces. required for FSI runs or if you wish to save the forces
       !--------------------------------------------------------------------------------------------------------------------
-      if ((iBeam>0).and.(iFSI>0).or.(iSaveBeam>0)) call GetForces  ( time, beam, bpressure_new, tau_beam_new, press, force_pressure,u )
+      if ( ((iFSI==1).and.(iBeam==1))  .or. (iSaveBeam>0)  ) call GetForces  ( time, beam, bpressure_new, tau_beam_new, press, force_pressure,u )
       !--------------------------------------------------------------------------------------------------------------------
       ! step four: get the new beam. either by imposed motion of by solving the beam eqn
       !--------------------------------------------------------------------------------------------------------------------
@@ -173,7 +173,7 @@ subroutine time_step
   it = 0
   time_start = time
   continue_timestep=.true.
-
+  
   do while ((time<Time_end).and.(continue_timestep == .true.))
 	time_dt = performance("start",10)
 	!--Advance the time step
@@ -195,7 +195,7 @@ subroutine time_step
 	! step three: get forces. required for FSI runs or if you wish to save the forces
 	!--------------------------------------------------------------------------------------------------------------------
 	time_pressure=performance("start",3)
-	if (((iBeam>0).and.((iFSI==0).or.(iFSI==10))).or.(iSaveBeam>0)) call GetForces  ( time, beam, bpressure_new, tau_beam_new,  press, force_pressure,u)
+	if ( ((iFSI==1).and.(iBeam==1))  .or. (iSaveBeam>0)  ) call GetForces  ( time, beam, bpressure_new, tau_beam_new,  press, force_pressure,u)
 	time_pressure=performance("stop",3)	    
 	!--------------------------------------------------------------------------------------------------------------------
 	! step four: get the new beam. either by imposed motion or by solving the beam eqn
@@ -364,6 +364,10 @@ subroutine time_step
   call cofitxy(vortk,press)
   call SaveField( trim(simulation_name) //"vor", press, 1, xl, yl, "precision")
 
+  open (10, file=trim(simulation_name)//"inicond", form='unformatted', status='replace')
+  write (10) nx, ny, press
+  close (10)
+  
 end subroutine time_step
 
 

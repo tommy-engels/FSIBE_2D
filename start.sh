@@ -94,6 +94,7 @@ then
   mv PARAMS.m tmp/
   mv epsilons tmp/
   mv *.in tmp/
+  mv *.inicond tmp/
   mv *.sh tmp/
   rm *
   mv tmp/* ./
