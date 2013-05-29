@@ -1,0 +1,62 @@
+0 -------------------------- Resolution -----------------------------------------------------------------
+256	% nx         (number of points in x-direction)
+256	% ny         (number of points in y-direction)
+64	% ns	     (number of points on the beam)
+10.0	%$ Time_end   (performs max nt time steps but stops by Time_end)
+0.0	%$ dt_fixed   (fixed time step. if 0, then variable (CFL)
+0.1     %$ cfl        ( ) 
+0 -------------------------- Beam -----------------------------------------------------------------------
+5.5284	% eta	     (stiffness coefficient)
+2.8902	% mue        (dimensionless inertia)
+0.0	%$ T_release  (Time when the beam is released)
+0.50	%$ tau        (Soft-Startup for the Couppling. It takes "tau" Time (in phys. Time) to get Full couppling)
+0.0	% AngleBeam  (An angle. for iFSI=0,1,3: static angle; iFSI=2: maximum flapp angle)
+0.00    % grav       (gravity (dimensionless) for beam equation
+3	%$ iImpluse   (apply a gravity impluse to perturbate the beam)
+0.00    % sigma      (damping for beam equation to reach steady states. 0.2 recommended)
+5	% TimeMethodSolid (EulerImplicit = 1, CrankNicholson = 2, RungeKutta4 = 3, EulerExplicit=4, BDF2 = 5)
+0 -------------------------- FSI options --------------------------------------------------------------
+1	% iFLUSI (with FSI=1, without FSI=0)
+1	% iMotion leading edge motion (0=none 1=soft_heaving 2=heaving 3=flapping)
+1	% iViscous (use viscous tensions=1, don't do so=0)
+0 -------------------------- Mask Options -------------------------------------------------------------
+0       % iCylinder  (is there a cylinder in at the leading edge? )
+0	% iWalls     (Channel walls)
+1	% iBeam      (With or with out beam)
+0 -------------------------- Saving flags -------------------------------------------------------------
+10.0	%$ tsave      (interval for saving fields)
+0.05	%$ tdrag      (interval for calculating drag)
+0       %$ iSavePress (pressure:  0=don't save, 1=save, 2=save every 2nd point)
+0       %$ iSaveVel   (velocity)
+1       %$ iSaveVort  (vorticity)
+0	%$ iSaveSTR   (streamfunction)	
+0	%$ iSaveStress(viscous stress)
+0	%$ iSaveMask  (mask function)
+0	%$ iSaveMaskV (mask-velocities)
+3       %$ iSaveBeam  (0=don't save beam, 1=save entire beam, 2=save endpoint and snapshots of the complete beam)
+0 ------------------------- Fluid & Flow  ----------------------------------------------------------------
+100	% Re         (kinematic viscosity)
+1.0e-3	% eps        (D'Arcy parameter)
+3	% iMeanVelocity (1=polynomial startup 2=cosine-shaped startup 3=impulsive 4=fluid at rest 11=zero mean pressure)
+0.0	% T_fullspeed (defines together with iMeanVelocity the MeanVelocity)
+0.0	% theta      (angle of mean flow (degrees), independen of iMeanVelocity)
+1       % idealias   (1=elliptical de-aliasing, 0=no de-aliasing)
+3	% iSponge    (4=velocity channel sponge 3=sponge around the domain, 2=sponge inflow, 1=sponge outflow, 0=no sponge)
+2	% SpongeType (1=poisseuille sponge, 2=no vorticity sponge)
+0 ------------------------- Backup or normal startup ----------------------------------------------------
+1       % inicond    (1=Start normally, 2=RETAKE BACKUP)
+0	% iMultiRes  (is this a run with several resolutions or not?)
+0 ------------------------- Length parameters -----------------------------------------------------------
+4.0	% xl         (size of computational domain in x-direction)
+4.0	% yl         (size of computational domain in y-direction)
+0.0	% R_cylinder (Cylinder for CSM test)
+1.5	% x0         (x-coordinate of centre of obstacle)
+2.0	% y0         (y-coordinate of centre of obstacle)
+1.0     % length     (length of obstacle)
+0.0312	% t_beam     (half beam thickness)
+0.0	% h_channel  (channel walls height (in phys.)
+2.0	% N_smooth   (half Smoothing layer thickness in coarsest gridpoint)
+0.15	% SpongeSize (Size of the sponge)
+0 ------------------------- Various ---------------------------------------------------------------------
+707     % checksum   (to check if the right PARAMS file is loaded)
+yeah.
