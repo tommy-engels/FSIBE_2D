@@ -27,6 +27,7 @@ subroutine params ()
   read *, dummy !----------------
   read *, iFLUSI
   read *, iMotion
+  read *, iViscous
   read *, dummy !----------------
   read *, iCylinder
   read *, iWalls

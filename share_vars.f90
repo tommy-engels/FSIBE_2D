@@ -7,7 +7,7 @@ module share_vars
   integer, save :: nx, ny,ns, iMeanVelocity, iSpongeType, nPalettes=14, iMultiRes
   integer, save :: idealis, ihypvisc, inicond, iobst, iSponge, iBeam, iWalls, iCylinder, iImpulse
   !!!!!!!!!!!
-  integer, save :: iFLUSI, iMotion
+  integer, save :: iFLUSI, iMotion, iViscous
   !!!!!!!!!!!
   ! save switches
   integer, save :: iSaveBeam, iSaveMask, iSaveMaskVel, iSaveSTR, iSavePress, iSaveVel, iSaveVort, iSaveStress

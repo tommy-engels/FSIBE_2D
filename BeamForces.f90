@@ -264,7 +264,10 @@ subroutine GetForcesInterp(time, beam, pressure_beam, tau_beam, press, u, force_
   real (kind=pr)                :: press_dx (0:nx-1, 0:ny-1),press_dy (0:nx-1, 0:ny-1)
   real (kind=pr)                :: press_dxdy (0:nx-1, 0:ny-1),press_k (0:nx-1, 0:ny-1)
   real (kind=pr), dimension (0:nx-1, 0:ny-1)  :: temp, work1, work2, work3, stress_a, stress_b
-  logical 			:: viscous_tensions=.false.
+  logical 			:: viscous_tensions
+  
+  if (iViscous==1) viscous_tensions = .true.
+  if (iViscous==0) viscous_tensions = .false.
   
   dx = xl/real(nx)
   dy = yl/real(ny)
