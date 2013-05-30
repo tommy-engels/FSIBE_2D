@@ -32,6 +32,9 @@ subroutine params ()
   read *, iCylinder
   read *, iWalls
   read *, iBeam
+  read *, iSharpTrailing
+  if (iSharpTrailing==1) write (*,'(A)') "*** Trailing edge is sharp..."
+  if (iSharpTrailing==0) write (*,'(A)') "*** Trailing edge is round..."
   read *, dummy !----------------
   read *, tsave
   read *, tdrag

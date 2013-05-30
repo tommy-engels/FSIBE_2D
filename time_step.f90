@@ -276,8 +276,8 @@ subroutine time_step
 ! 	    call SaveGIF(press, trim(dir_name)//"/press2/"//trim(namestring)//"_T="//trim(timestring)//".press")	    
 ! 	    call SaveGIF(vort, trim(dir_name)//"/vor2/"//trim(namestring)//"_T="//trim(timestring)//".vor", 13, -colorscale, colorscale)	    
 	    call SaveGIF(mask, trim(dir_name)//"/press2/"//trim(namestring)//"_T="//trim(timestring)//".mask", 13, 0.0, 1.0/eps)
-! 	    call SaveGIF(abs(maskvx), trim(dir_name)//"/press2/vx"//trim(namestring)//"_T="//trim(timestring)//".mask", 13, 0.0, maxval(abs(maskvx)))
-! 	    call SaveGIF(abs(maskvy), trim(dir_name)//"/press2/vy"//trim(namestring)//"_T="//trim(timestring)//".mask", 13, 0.0, maxval(abs(maskvy)))
+	    call SaveGIF(abs(maskvx), trim(dir_name)//"/press2/"//trim(namestring)//"_T="//trim(timestring)//".maskvx", 13, 0.0, maxval(abs(maskvx)))
+	    call SaveGIF(abs(maskvy), trim(dir_name)//"/press2/"//trim(namestring)//"_T="//trim(timestring)//".maskvy", 13, 0.0, maxval(abs(maskvy)))
 	    ! without fixed scaling
 ! 	    call SaveGIF(vort, trim(dir_name)//"/vor/"//trim(namestring)//"_T="//trim(timestring)//".vor", 1, minval(vort), maxval(vort))
 ! 	    call SaveGIF(press, trim(dir_name)//"/press/"//trim(namestring)//"_T="//trim(timestring)//".press", 14, minval(press), maxval(press))

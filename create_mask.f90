@@ -80,37 +80,39 @@ subroutine create_mask ( time, beam )
 
   !--------------------------------------------------------------------------------
   !		Draw the beam
+  ! Note it really matters what you do first, second, third
   !--------------------------------------------------------------------------------
   if (iBeam>0) then
-    !---- Draw beam segments
+    !------------------------
+    ! Draw beam segments
+    !------------------------
     do i=0, ns-2
-      call DrawBeamSegment( beam(i,1),  beam(i,2),&
-			    beam(i+1,1),beam(i+1,2),&
-			    beam(i,3)  ,beam(i,4),&
-			    beam(i+1,3),beam(i+1,4),&
-			    t_beam, N )
-    enddo
-    
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    if (Mask_end==1) then
+      call DrawBeamSegment( beam(i,1),beam(i,2),beam(i+1,1),beam(i+1,2),beam(i,3),beam(i,4),beam(i+1,3),beam(i+1,4),t_beam, N )
+    enddo    
+    !------------------------
+    ! trailing edge is sharp?
+    !------------------------
+    if (iSharpTrailing==1) then
       call DrawSharpEnd( beam(ns-1,1:2), beam(ns-1,5)+alpha, beam(ns-1,3:4),t_beam, N )
-    endif
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
-    
-        
-    !---- Fill the gaps with tiny circle segments
+    endif       
+    !------------------------  
+    ! Fill the gaps with tiny circle segments
+    !------------------------
     do i=1,ns-2
-      alpha1 = (atan2( (beam(i,2)-beam(i-1,2)),(beam(i,1)-beam(i-1,1)) ))
-      alpha2 = (atan2( (beam(i+1,2)-beam(i,2)),(beam(i+1,1)-beam(i,1)) ))
+      alpha1 = atan2( (beam(i,2)-beam(i-1,2)),(beam(i,1)-beam(i-1,1)) )
+      alpha2 = atan2( (beam(i+1,2)-beam(i,2)),(beam(i+1,1)-beam(i,1)) )
       call DrawHinge( beam(i,1),beam(i,2),alpha1,alpha2, beam(i,3), beam(i,4), t_beam, N )
-    enddo
-    !---- Leading edge endpoint
-    call DrawADot( beam(0,1),beam(0,2), beam(0,3), beam(0,4), t_beam, N )
-    !---- Trailing edge endpoint
-    if (Mask_end==0) then
+    enddo    
+    !------------------------
+    ! Leading edge
+    !------------------------
+    call DrawADot( beam(0,1),beam(0,2), beam(0,3), beam(0,4), t_beam, N )    
+    !------------------------
+    ! Trailing edge is round?
+    !------------------------
+    if (iSharpTrailing==0) then
       call DrawADot( beam(ns-1,1),beam(ns-1,2), beam(ns-1,3), beam(ns-1,4), t_beam, N)
     endif
-
   endif
 
   !-------------------------------------------------------------------------------------------
@@ -362,12 +364,11 @@ end subroutine SmoothStep
 real (kind=pr) function ConvertAngle(angle1)
   use share_vars
   implicit none
-
   real(kind=pr), intent (in) :: angle1
-    !converts an angle from fortran standard (-pi<angle<pi) to real (0<angle<2pi)
+  !converts an angle from fortran standard (-pi<angle<pi) to real (0<angle<2pi)
   ConvertAngle = angle1
   if (angle1<0.0) then
-    ConvertAngle = 2.0*pi+angle1
+    ConvertAngle = 2.0*pi+angle1 ! note that angle is negative, so this reads 2pi-abs(phi)
   endif
 
   return
@@ -380,12 +381,19 @@ subroutine DrawHinge (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
   use share_vars
   implicit none
   real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
-  real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle
+  real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle, beta1, beta2, zeta1, zeta2, zeta3
   integer :: ixmax, ixmin, iymax, iymin, i, j
+  logical :: inside1, inside2
+  
+  ! so whats going on here? two rectangles meet. they are rotated.there is a gap to be filled.
+  ! so we add a HALF circle (pi) to every rectangle
+  ! the region to be filled is the region covered by BOTH half circles
 
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 10.*N*max(dx,dy) !effective beam thickness including the smoothing zone
+  
+  t_star = t + 2.*N*max(dx,dy) !effective beam thickness including the smoothing zone
+  
   ixmin = nint( (pointx-t_star)/dx)
   ixmax = nint( (pointx+t_star)/dx)
   iymin = nint( (pointy-t_star)/dy)
@@ -396,24 +404,66 @@ subroutine DrawHinge (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
   iymin = max( iymin, 0)  
   iymax = min( iymax,ny-1)  
   
-
+  beta1 = ConvertAngle(alpha1)*180.0/pi ! beta angles are just converted alpha's
+  beta2 = ConvertAngle(alpha2)*180.0/pi
+  
   
   do i=ixmin, ixmax
     do j=iymin, iymax
-      R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
-      gamma = (atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
+      ! radius
+      R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )      
+      if (R<=t_star) then !inside the beam
+      
+	  ! compute angle of the point we're looking at
+	  gamma = (atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
+	  gamma = ConvertAngle(gamma)*180.0/pi
+	  
+	  inside1 = .false.
+	  inside2 = .false.
+	  
+	  ! this is complicated and tedious, but works now.
+	  ! essentially, you look for the range of angles for a given alpha, say, 10 deg
+	  ! and then see what happens if your alpha gets bigger
+	  ! 		Rectangle 1:
+	  ! 0------90------180------270------360
+	  ! xxxxxxxxxxx.................xxxxxxxx  case A, alpha<90 deg
+	  ! ...xxxxxxxxxxxxxxxxxx...............  case B, alpha>90 deg
+	  ! xx.........................xxxxxxxxx  case C, alpha>270 deg
+	  ! 		Rectangle 2:
+	  ! 0------90------180------270------360
+	  ! ...xxxxxxxxxxxxxxxxxx...............  case A, alpha<90 deg
+	  ! xx.........................xxxxxxxxx  case B, alpha>90 deg
+	  ! ........xxxxxxxxxxxxxxxxxx..........  case C, alpha>270 deg
+	  
+	  
+	  if (beta1<90.0) then
+	      ! in this case, the interval is split into two pieces
+	      if ( ((gamma>=0.0).and.(gamma<=90.0+beta1)) .or. ((gamma>=270.0+beta1).and.(gamma<=360.0)) ) inside1 = .true.	
+	  elseif ((beta1>=90.0).and.(beta1<270.0)) then
+	      ! once beta>90, the interval moves to the right and unifies
+	      if ((gamma>=270.0+beta1-360.0) .and. (gamma<=90.0+beta1)) inside1 = .true.
+	  elseif (beta1>=270.0) then
+	      if ( ((gamma>=0.0).and.(gamma<=90.0+beta1-360.0)) .or. ((gamma>=270.0+beta1-360.0).and.(gamma<=360.0)) ) inside1 = .true.	
+	  endif
 
-      if ((R <= t_star).and. &  !inside the beam
-      ( ((0.5*pi+alpha2<=gamma).and.(gamma<=pi)).or.((-pi<=gamma).and.(gamma<=alpha2-pi*0.5)) ) & !half circle 2: backward facing
-      .and.((gamma>=alpha1-0.5*pi).and.(gamma<=alpha1+0.5*pi)) )   then !half circle 1: foreward facing
+	  if (beta2<=90.0) then
+	      ! standard case.
+	      if ((gamma>=90.0+beta2).and.(gamma<270.0+beta2)) inside2 = .true.
+	  elseif ((beta2>=90.0).and.(beta2<270.0)) then
+	      ! now the range is pushed to the right, over the bound, now we have two intervals.
+	      if ( ((gamma>=0.0).and.(gamma<=270.0+beta2-360.0)) .or. ((gamma>=90.0+beta2).and.(gamma<=360.0)) ) inside2 = .true.
+	  elseif (beta2>=270.0) then	      
+	      if ((gamma>=90.0+beta2-360.0).and.(gamma<270.0+beta2-360.0)) inside2 = .true.
+	  endif
 
-      call SmoothStep(temp, R, t, N*max(dx,dy) )
-      if (temp>mask(i,j)) then
-        mask(i,j) = temp !existing mask points are overwritten if they are smaller than the new one
-        maskvx(i,j)=vx
-        maskvy(i,j)=vy
-      endif
-
+	  if ((inside2 .eqv. .true.) .and. (inside1 .eqv. .true.)) then
+	      call SmoothStep(temp, R, t, N*max(dx,dy) )
+	      if (temp>mask(i,j)) then
+		mask(i,j) = temp !existing mask points are overwritten if they are smaller than the new one
+		maskvx(i,j)=vx
+		maskvy(i,j)=vy
+	      endif
+	  endif	
       endif
     enddo
   enddo
@@ -421,96 +471,8 @@ subroutine DrawHinge (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
 
 end subroutine DrawHinge
 
-!==============================================================================================================================================
-
-subroutine DrawEndpointLeft (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
-! DrawHinge draws just a circle sector, not an entire circle, between alpha1 and alpha2. fills NOT only the tiny gap.
-  use share_vars
-  implicit none
-  real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
-  real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle
-  integer :: ixmax, ixmin, iymax, iymin, i, j
-
-  dx=xl/real(nx)
-  dy=yl/real(ny)
-  t_star = t + N*max(dx,dy) !effective beam thickness including the smoothing zone
-  ixmin = nint( (pointx-t_star)/dx)
-  ixmax = nint( (pointx+t_star)/dx)
-  iymin = nint( (pointy-t_star)/dy)
-  iymax = nint( (pointy+t_star)/dy)
 
 
-  if ((ixmin<0).or.(ixmax>nx).or.(iymin<0).or.(iymax>ny)) then
-    write (*,*) "Mask:: Beam Hinge. Index out of region"
-    stop
-  endif
-
-
-  do i=ixmin, ixmax
-    do j=iymin, iymax
-      R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
-      gamma = ConvertAngle(atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
-      if (((R <= t_star).and.((gamma>=alpha1).and.(gamma<=alpha2))).or.(R<=max(dx,dy)))   then
-
-	call SmoothStep(temp, R, t, N*max(dx,dy) )
-	if (temp>mask(i,j)) then
-	  mask(i,j) = temp !existing mask points are overwritten if they are smaller than the new one
-	  if (mask(i,j)>0.0) then ! if the mask is set there, give it a velocity
-	    maskvx(i,j)=vx!*mask(i,j)*eps
-	    maskvy(i,j)=vy!*mask(i,j)*eps
-	  endif
-	endif
-
-      endif
-    enddo
-  enddo
-
-
-end subroutine DrawEndpointLeft
-
-!==============================================================================================================================================
-
-subroutine DrawEndpointRight (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
-! DrawHinge draws just a circle sector, not an entire circle, between alpha1 and alpha2. fills NOT only the tiny gap.
-  use share_vars
-  implicit none
-  real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
-  real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle
-  integer :: ixmax, ixmin, iymax, iymin, i, j
-
-  dx=xl/real(nx)
-  dy=yl/real(ny)
-  t_star = t + N*max(dx,dy) !effective beam thickness including the smoothing zone
-  ixmin = nint( (pointx-t_star)/dx)
-  ixmax = nint( (pointx+t_star)/dx)
-  iymin = nint( (pointy-t_star)/dy)
-  iymax = nint( (pointy+t_star)/dy)
-
-
-  if ((ixmin<0).or.(ixmax>nx).or.(iymin<0).or.(iymax>ny)) then
-    write (*,*) "Mask:: Beam Hinge. Index out of region"
-    stop
-  endif
-
-  
-  do i=ixmin, ixmax
-    do j=iymin, iymax
-      R = sqrt ( (real(i)*dx-pointx)**2 + (real(j)*dy-pointy)**2 )
-      gamma = (atan2( (real(j)*dy-pointy),(real(i)*dx-pointx) ))
-      if (((R <= t_star).and.((gamma>=alpha1).and.(gamma<=alpha2))).or.(R<=max(dx,dy)))   then
-	call SmoothStep(temp, R, t, N*max(dx,dy) )
-	if (temp>mask(i,j)) then
-	  mask(i,j) = temp !existing mask points are overwritten if they are smaller than the new one
-	  if (mask(i,j)>0.0) then ! if the mask is set there, give it a velocity
-	    maskvx(i,j)=vx
-	    maskvy(i,j)=vy
-	  endif
-	endif
-      endif
-    enddo
-  enddo
-  
-end subroutine DrawEndpointRight
 
 !==============================================================================================================================================
 
@@ -530,7 +492,7 @@ subroutine DrawADot (pointx, pointy, vx, vy, t, N)
 
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 3.0*N*max(dx,dy) !effective beam thickness including the smoothing zone
+  t_star = t + 2.0*N*max(dx,dy) !effective beam thickness including the smoothing zone
   ixmin = 0!max( nint( (pointx-t_star)/dx), 0)
   ixmax = nx-1!min( nint( (pointx+t_star)/dx), nx)
   iymin = 0!max( nint( (pointy-t_star)/dy), 0)
@@ -588,7 +550,7 @@ subroutine DrawBeamSegment ( p1x,p1y,p2x,p2y, v1x, v1y, v2x,v2y, t, N )
   !--------------------------------------------------------------
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 3.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
+  t_star = t + 2.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
   !real angle between the two points
   
   alpha = -atan2( (point2(2)-point1(2)),(point2(1)-point1(1)) )
@@ -635,7 +597,7 @@ end subroutine DrawBeamSegment
 
 
 
-subroutine DrawSharpEnd(point_end, alpha, v,t,N)
+subroutine DrawSharpEnd(point_end, alpha, v, t,N)
   use share_vars
   implicit none
   real (kind=pr), intent (in)  :: N,t, alpha
@@ -644,17 +606,19 @@ subroutine DrawSharpEnd(point_end, alpha, v,t,N)
   real (kind=pr) :: t_star, dx, dy, R, x_star, y_star, temp,tmp2 
   integer :: ixmax, ixmin, iymax, iymin, i, j
 
+  
   dx=xl/real(nx)
   dy=yl/real(ny)
-  t_star = t + 3.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
+  t_star = t + 2.0*N*max(dx,dy) !effective half beam thickness including the smoothing zone
   
   ! the first point lies INSIDE the beam
-  point1(1) = point_end(1) - 5.0*max(dx,dy) * cos(alpha)
-  point1(2) = point_end(2) - 5.0*max(dx,dy) * sin(alpha)
+  point1(1) = point_end(1) - 2.0*max(dx,dy) * cos(alpha)
+  point1(2) = point_end(2) - 2.0*max(dx,dy) * sin(alpha)
    
   ! the second point lies OUTSIDE the beam 
-  point2(1) = point_end(1) + 5.0*max(dx,dy) * cos(alpha) 
-  point2(2) = point_end(2) + 5.0*max(dx,dy) * sin(alpha)
+  ! we need more space here to account for smoothing nicely
+  point2(1) = point_end(1) + 4.0*max(dx,dy) * cos(alpha) 
+  point2(2) = point_end(2) + 4.0*max(dx,dy) * sin(alpha)
 
   !domain for calculation (to reduce comp. costs)
   ixmin = nint( (min(point1(1),point2(1))-t_star)/dx)
@@ -686,12 +650,19 @@ subroutine DrawSharpEnd(point_end, alpha, v,t,N)
 	call SmoothStep (temp, abs(y_star - point1_star(2)), t, N*max(dx,dy) )	
 	
 	mask(i,j) = temp*tmp2
-	maskvx(i,j) = v(1)
-	maskvy(i,j) = v(2)
+	
+	! for the velocity we're more strict. only values outside the actual beam are set
+	! so, in the smoothing layer that is trailing.
+	if (x_star-point1_star(1) >= 2.0*max(dx,dy)) then
+	  maskvx(i,j) = v(1)
+	  maskvy(i,j) = v(2)
+	endif
+
       endif
     enddo
   enddo
   
+        
     
   
 end subroutine DrawSharpEnd

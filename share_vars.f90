@@ -27,7 +27,7 @@ module share_vars
   ! ----------------------------------------------
   ! mask parameter
   ! ----------------------------------------------
-  integer, parameter :: Mask_end = 1 ! 0=round 1=sharp
+  integer :: iSharpTrailing 
   logical, save::  sharp= .false. ! if the smoothing is 0, then we switch to a sharp mask.
   
   

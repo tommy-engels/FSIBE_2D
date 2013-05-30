@@ -25,12 +25,10 @@ program dns
   
   allocate( pressure_beam_init(0:ns-1), beam_init(0:ns-1, 1:6), beam_tmp(0:ns-1, 1:6) ) !beam_tmp is used in cal_drag
   
-  
+ 
   
   allocate ( T_beam_save (0:ns-1) ) ! this is used in the solid solver
   T_beam_save = 0.0
-  
-  
   
 
   if (iMultiRes==0) then !just a normal single run
@@ -205,6 +203,45 @@ subroutine StartSimulation()
   call fft_free        
 
 end subroutine StartSimulation
+
+
+subroutine hinge_debugging()
+! I used this 29.05.2013 at 23:40 to fin a bug in create_mask. its found, all smooth.
+  use share_vars
+  use FieldExport
+  implicit none
+  real (kind=pr) :: alpha, beta, time,dt
+  integer :: ivideo
+  real (kind=pr), dimension (0:ns-1, 1:6) :: beam
+  character(len=17) :: namestring
+  
+  ivideo = 0
+  allocate ( mask(0:nx-1,0:ny-1)   )      
+  allocate ( maskvx(0:nx-1,0:ny-1) )
+  allocate ( maskvy(0:nx-1,0:ny-1) )
+  
+  dt = 5.e-2
+  time = 0.0
+  
+  do while (time<1.)
+  alpha = 2.*pi*sin(time)
+  beta  = 2.*pi*cos(1.5*time)
+  beam = 0
+  beam(0,5) = alpha
+  beam(1:2,5) = beta
+  write (namestring,'(i4.4)')    ivideo
+  call integrate_position(0.0, beam)
+  call create_mask(0.0, beam)
+  call SaveGIF(mask, trim(namestring), 13, 0.0, 1.0/eps)
+  ivideo = ivideo + 1
+  time = time +dt
+  enddo
+  
+  
+  deallocate (maskvx, maskvy, mask)
+
+
+end subroutine 
 
 
 ! ********************************************************************************************************************************************
