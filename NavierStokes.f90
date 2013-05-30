@@ -65,33 +65,12 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
   u_max = sqrt(maxval(work2))
   dt1 = cfl * min (dx, dy) / u_max
 
-  !-----------------------------------------------------------------------
   !-- u_max is very very small
-  if(u_max.lt.1.e-12) then 
-      dt1 = 1.e-2 
-  endif
-  !-----------------------------------------------------------------------
-  !-- To avoid high steps at the beginning of motion
-  if ( (dt1 > cfl*1.e-2).and.((iBeam>0).or.(iWalls>0).or.(iCylinder>0)) ) then
-    dt1=cfl*1.e-2 
-  endif
-  !-----------------------------------------------------------------------
-  !-- Time stepping control for beam CFL
-  if ( (iBeam>0).and.(abs(maxval(beam(:,3:4)))>1.0e-14) ) then
-  if (dt1>cfl*min(dx,dy)/maxval(beam(:,3:4))) then
-      dt1 = cfl*min(dx,dy)/maxval(beam(:,3:4))
-  endif
-  endif
-  !-----------------------------------------------------------------------
+  if (u_max < 1.e-10) dt1 = 1.e-2 
   !-- Time stepping control for volume penalization
-  if ( (dt1 >= 0.9*eps).and.((iBeam>0).or.(iWalls>0).or.(iCylinder>0)) ) then
-    dt1 = 0.9*eps ! time step is smaller than eps (Dmitry, 26 feb 08)
-  endif
-  !-----------------------------------------------------------------------
+  if ((iBeam>0).or.(iWalls>0).or.(iCylinder>0)) dt1 = min(0.9*eps,dt1)
   !-- Fixed time step
-  if (dt_fixed>0.0) then
-    dt1 = min(dt_fixed, dt1)
-  endif
+  if (dt_fixed>0.0) dt1 = min(dt_fixed, dt1)  
   !-- perfectly reach target time
   if ((Time_end - time) < dt1) then
     dt1 = Time_end - time
@@ -213,7 +192,7 @@ subroutine cal_velocity(time, vortk, u, stream )
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work2
   real (kind=pr), intent(in) :: time
   real (kind=pr) :: Mean_ux, Mean_uy
-  integer :: ix,iy
+  integer :: iy
 
   !--Solve poisson equation for stream function
   call poisson (vortk, stream)
@@ -265,12 +244,10 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   real (kind=pr), dimension (1:4), intent(out) :: Forces !Forces: drag lift drag_unst lift_unst
   real (kind=pr), dimension (1:7), intent(out) :: FluidIntegralQuantities ! 1= vor_rms 2=vor_rms_dot 3=Fluid kinetic Enegry 4=enstrophy
   real (kind=pr) :: Mean_ux, Mean_uy
-  real (kind=pr), save :: T_lastdrag =0.0, vor_rms_old=0.0
+  real (kind=pr), save :: vor_rms_old=0.0
 !--Working files
-  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work_dy, work_dx, p, work2
-  real (kind=pr) :: dx, dy, t_5, t_6, t_7, t_8, t_9
-  character(len=17) :: format_ns
-  character(len=4)  :: ns_string
+  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work_dy, work_dx, work2
+  real (kind=pr) :: dx, dy
   dx = xl / real (nx)
   dy = yl / real (ny)
 
@@ -445,7 +422,7 @@ subroutine EvolveFluidExplicit(time, dt1, n0, n1, beam, vortk, workvis, nlk, pre
   
   !$omp parallel do private(iy)
   do iy=0,ny-1
-    vortk(:,iy,n1) = (vortk(:,iy,n0) + dt1 * nlk (:,iy,n0)) * workvis(:,iy,n1) * dealiase(:,iy)
+    vortk(:,iy,n1) = (vortk(:,iy,n0) + dt1*nlk(:,iy,n0)) * workvis(:,iy,n1) * dealiase(:,iy)
   enddo
   !$omp end parallel do
 
@@ -538,21 +515,6 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
   norm = dx*dy
 
   !------------------------------------------------------------------------------------------------------------------------------
-  !--			Save inflow velocity profile
-  !------------------------------------------------------------------------------------------------------------------------------
-
-!  if (iSaveNow==1) then
-!  write(ns_string, '(I4)') ny+2
-!  format_ns = '('//ns_string//'(es12.5,1x))'
-!  xposition = SpongeSize
-!  ix        = nint(xposition/dx)
-
-!  open  (10, file = trim(simulation_name)//'inflow_profile', status = 'unknown', access = 'append')
-!  write (10, format_ns) time, real(ix)*dx, (U_mean_true*Mean_ux(time)+psi_dy(ix, iy), iy=0,ny-1)
-!  close (10)
-!  endif
-
-  !------------------------------------------------------------------------------------------------------------------------------
   !--			Compute Drag and Lift forces & unsteady correction terms
   !------------------------------------------------------------------------------------------------------------------------------
   ! optimized 10/11/2011 now using penal from pressure subroutine and the smallest (best) integration windows possible  
@@ -579,29 +541,27 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
     if (iymax>nint((yl-h_star)/dy)-2)   iymax = nint((yl-h_star)/dy)-2
   endif
 
-  if (ixmin<0)    ixmin = 0	
+  if (ixmin<0)    ixmin = 0
   if (ixmax>nx-1) ixmax = nx-1
-  if (iymin<0)    iymin = 0	
+  if (iymin<0)    iymin = 0
   if (iymax>ny-1) iymax = ny-1
 
 
   drag = sum(penal(ixmin:ixmax,iymin:iymax,1)) * norm
   lift = sum(penal(ixmin:ixmax,iymin:iymax,2)) * norm
-! write(*,'("time=",es11.4," drag=",es11.4," lift=",es11.4)') time, drag, lift
-!!  drag_unst_new = sum( sum ( maskvx(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax), dim=1 ) ) * norm * eps
-!!  lift_unst_new = sum( sum ( maskvy(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax), dim=1 ) ) * norm * eps
 
- 
   !------------------------------------------------------------------------------------------------------------------------------
   !--			compute unsteady lift/drag corrections
   !------------------------------------------------------------------------------------------------------------------------------
   ! numercial correction, works, no significant disadvantage w.r.t beamßelement method 28-3-2012
-!!  if (((iIteration==1).and.(DidFirstStep==0)).or.(iIteration==0)) then !attention here, only advance once per time step (when using iterations)
-!!  drag_unst   = (drag_unst_new - drag_unst_old)/dt1 !compute unsteady correction
-!!  lift_unst   = (lift_unst_new - lift_unst_old)/dt1  
-!!  drag_unst_old=drag_unst_new  !iterate
-!!  lift_unst_old=lift_unst_new  !iterate
-!!  endif
+! !   drag_unst_new = sum (maskvx(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps
+! !   lift_unst_new = sum (maskvy(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps  
+! !   
+! !   drag_unst   = (drag_unst_new - drag_unst_old)/dt1 !compute unsteady correction
+! !   lift_unst   = (lift_unst_new - lift_unst_old)/dt1  
+! !   drag_unst_old = drag_unst_new  !iterate
+! !   lift_unst_old = lift_unst_new  !iterate
+ 
 
   Forces(1) = drag
   Forces(2) = lift
@@ -609,7 +569,6 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
 !!  Forces(4) = lift_unst  
   
   if (iBeam>0) then
-      ! **** try to avoid spurios oscillations!
       ! compute unsteady corrections via the beam 
       accel = (beam(:,3:4)-beam_tmp(:,3:4))/dt1 ! first order derivative
       Forces(3) = sum(accel(:,1))*2.0*ds*t_beam
@@ -637,14 +596,13 @@ subroutine ComputePressureSnapshot ( time, vortk, press )
   use FieldExport
   implicit none
   integer :: k, l, iy,ix,ixmin,ixmax,iymin,iymax
-  real (kind=pr) :: quot
   real (kind=pr), intent(in) :: time
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (out) :: press
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 1:2) :: penal, u
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (in)  :: vortk  
   real (kind=pr) :: Mean_ux, Mean_uy
 !--Working files
-  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work_dy, work_dx, p, work2
+  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work_dy, work_dx, work2
   real (kind=pr) :: dx, dy
 
   dx = xl / real (nx)
