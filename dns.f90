@@ -91,8 +91,11 @@ write (*,*) "to do, fix me here..:"
 ! 	  write (dir_name       ,'("nx",i5.5,"_ny",i5.5,"_eps",es7.1)') nx, ny, eps
 ! 	  write (simulation_name,'("nx",i5.5,"_ny",i5.5,"_eps",es7.1)') nx, ny, eps
 	  
-	  write (dir_name       ,'(i2.2,"_dt",es7.1)') i, dt_fixed
-	  write (simulation_name,'(i2.2,"_dt",es7.1)') i, dt_fixed
+! 	  write (dir_name       ,'(i2.2,"_dt",es7.1)') i, dt_fixed
+! 	  write (simulation_name,'(i2.2,"_dt",es7.1)') i, dt_fixed
+	  
+	  write (dir_name       ,'(i2.2,"_eps",es7.1)') i, eps
+	  write (simulation_name,'(i2.2,"_eps",es7.1)') i, eps
 	  
 	  
 	  simulation_name = trim(simulation_name_org) // trim(simulation_name) // '.'
@@ -175,12 +178,13 @@ subroutine StartSimulation()
   implicit none
   write (*,*) "*** information: entering StartSimulation"
 
-  call system('mkdir '//trim(dir_name) )
-  call system('mkdir '//trim(dir_name)//'/fields' )
-  call system('mkdir '//trim(dir_name)//'/vor' )
-  call system('mkdir '//trim(dir_name)//'/vor2' )
-  call system('mkdir '//trim(dir_name)//'/press' )
-  call system('mkdir '//trim(dir_name)//'/press2' )
+  call system('mkdir -p '//trim(dir_name) )
+  call system('mkdir -p '//trim(dir_name)//'/fields' )
+  call system('mkdir -p '//trim(dir_name)//'/vor' )
+  call system('mkdir -p '//trim(dir_name)//'/mask' )
+!   call system('mkdir -p '//trim(dir_name)//'/vor2' )
+  call system('mkdir -p '//trim(dir_name)//'/press' )
+!   call system('mkdir -p '//trim(dir_name)//'/press2' )
   write (*,*) "*** information: created directories"
 
   allocate ( dealiase(0:nx-1,0:ny-1) )

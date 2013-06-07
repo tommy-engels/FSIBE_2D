@@ -554,27 +554,27 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
   !--			compute unsteady lift/drag corrections
   !------------------------------------------------------------------------------------------------------------------------------
   ! numercial correction, works, no significant disadvantage w.r.t beamßelement method 28-3-2012
-! !   drag_unst_new = sum (maskvx(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps
-! !   lift_unst_new = sum (maskvy(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps  
-! !   
-! !   drag_unst   = (drag_unst_new - drag_unst_old)/dt1 !compute unsteady correction
-! !   lift_unst   = (lift_unst_new - lift_unst_old)/dt1  
-! !   drag_unst_old = drag_unst_new  !iterate
-! !   lift_unst_old = lift_unst_new  !iterate
+  drag_unst_new = sum (maskvx(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps
+  lift_unst_new = sum (maskvy(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps  
+  
+  drag_unst   = (drag_unst_new - drag_unst_old)/dt1 !compute unsteady correction
+  lift_unst   = (lift_unst_new - lift_unst_old)/dt1  
+  drag_unst_old = drag_unst_new  !iterate
+  lift_unst_old = lift_unst_new  !iterate
  
 
   Forces(1) = drag
   Forces(2) = lift
-!!  Forces(3) = drag_unst
-!!  Forces(4) = lift_unst  
+  Forces(3) = drag_unst
+  Forces(4) = lift_unst  
   
-  if (iBeam>0) then
-      ! compute unsteady corrections via the beam 
-      accel = (beam(:,3:4)-beam_tmp(:,3:4))/dt1 ! first order derivative
-      Forces(3) = sum(accel(:,1))*2.0*ds*t_beam
-      Forces(4) = sum(accel(:,2))*2.0*ds*t_beam
-      beam_tmp=beam !beam_tmp is global. why? because an automatic object must not have a save attribute. sometimes, I hate fortran.
-  endif
+! !   if (iBeam>0) then
+! !       ! compute unsteady corrections via the beam 
+! !       accel = (beam(:,3:4)-beam_tmp(:,3:4))/dt1 ! first order derivative
+! !       Forces(3) = sum(accel(:,1))*2.0*ds*t_beam
+! !       Forces(4) = sum(accel(:,2))*2.0*ds*t_beam
+! !       beam_tmp=beam !beam_tmp is global. why? because an automatic object must not have a save attribute. sometimes, I hate fortran.
+! !   endif
   
 end subroutine cal_drag
 

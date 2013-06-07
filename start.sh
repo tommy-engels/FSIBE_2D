@@ -82,13 +82,14 @@ akt=$PWD #get parent directory
 if [ "$3" == "yes" ] # clean directory if desired
 then 
   cd "$2"
-  rm -R vor/
-  rm -R vor2/
-  rm -R press/
-  rm -R press2/
-  rm -R fields/
-  rm -R mvt/
-  rm -R fix/
+  rm -Rf vor/
+  rm -Rf vor2/
+  rm -Rf press/
+  rm -Rf press2/
+  rm -Rf fields/
+  rm -Rf mask/
+  rm -Rf mvt/
+  rm -Rf fix/
   mkdir tmp
   mv *.oar tmp/
   mv PARAMS.m tmp/
