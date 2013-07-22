@@ -37,7 +37,7 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
   tau_beam_old 	= 0.0
   ivideo 	= 1 ! counter for the snapshots
   
-  write (*,'(" --- inicond = ",i1)') inicond
+  write (*,'(" --- inicond = ",i3)') inicond
 
   if (inicond == 1) then !==================================================================================================
       ! normal startup
@@ -99,7 +99,7 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
       endif
       
       open (10, file=trim(inicond_file), form='unformatted', status='old')
-      read (10) nx_file, ny_file, vort
+      read (10) nx_file, ny_file, vort!, beam
       close (10)
       
       if ((nx_file==nx).and.(ny_file==ny)) then

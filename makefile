@@ -55,7 +55,7 @@ ifeq ($(CONF),meso)
 	
 	FPAR = -openmp -parallel -lpthread
  	FOPTS = -O3 -xW -fpp -r8 -static
-#  	FOPTS = -O3 -xW -fpp -r8 -g -static -check all -fpe0 -warn -traceback -debug extended 
+#  	FOPTS = -O3 -xW -fpp -r8 -g -static -check all -warn -traceback -debug extended 
 
 	MKL_BASE = /LOGINSTO/softs/intel/11.1.080/Compiler/11.1/080/mkl/
 	MKL_PATH = $(MKL_BASE)/lib/em64t

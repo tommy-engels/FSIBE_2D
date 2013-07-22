@@ -1,5 +1,9 @@
 export LC_ALL=C
-OAR_FILE="meso_OMP.oar"
+unset MAKEFLAGS
+module load intel/11.1.080
+#OAR_FILE="meso_OMP.oar"
+OAR_FILE="job.oar"
+
 
 #------------------------------------------------------
 # COLOR, baby!

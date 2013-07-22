@@ -106,9 +106,9 @@ subroutine time_step
   
   !---------------------------------------------------------
   ! Save initial values (fields)
-  !---------------------------------------------------------
-  nbackup = 2 ! no backup at the beginning
+  !---------------------------------------------------------  
   if (inicond .ne. 2 ) then
+  nbackup = 2 ! no backup at the beginning
   call save_fields (n1, time, dt1, vortk, nlk, workvis, nbackup, beam, bpressure_old, ivideo, u, press, tau_beam_old)
   write (*,*) "*** information: saved startup fields"
   endif
@@ -363,7 +363,8 @@ subroutine time_step
   call SaveField( trim(simulation_name) //"vor", press, 1, xl, yl, "precision")
 
   open (10, file=trim(simulation_name)//"inicond", form='unformatted', status='replace')
-  write (10) nx, ny, press
+  ! note "press" is vor in physical space
+  write (10) nx, ny, press!, beam
   close (10)
   
 end subroutine time_step
