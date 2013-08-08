@@ -317,38 +317,38 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   
   if ((iFLUSI==1).or.(iSaveBeam>0)) then     
       !------------------------------------------------
-      ! DIVERGENCE of penalty term
+      ! right hand side of the pressure poisson eqn. 
+      ! note we can compute everything in physical space
+      ! before taking the divergence - this is more efficient.
       !------------------------------------------------
+      
+      !------------------------------------------------
+      ! we already have the penalty term, add the NL term:
+      !------------------------------------------------      
+      !$omp parallel do private(iy)
+      do iy=0,ny-1
+        !penalty term is positive in poisson-pressure eqn
+        penal(:,iy,1) = penal(:,iy,1) - work1(:,iy)*u(:,iy,2) ! -vor*uy
+        penal(:,iy,2) = penal(:,iy,2) + work1(:,iy)*u(:,iy,1) ! +vor*ux
+      enddo
+      !$omp end parallel do      
+      
+      !------------------------------------------------
+      ! compute divergence
+      !------------------------------------------------      
       !--Calculate x-derivative in Fourier space
       call coftxy (penal(:,:,1), work2) !-- d Px / dx
       call cofdx  (work2, penal(:,:,1))
       !--Calculate y-derivative in Fourier space
       call coftxy (penal(:,:,2), work2) !-- d Py / dy
       call cofdy  (work2, penal(:,:,2))
-
-      !------------------------------------------------
-      ! DIVERGENCE of non-linear term
-      !------------------------------------------------
-      !$omp parallel do private(iy)
-      do iy=0,ny-1
-	work_dx(:,iy) = -work1(:,iy)*u(:,iy,2) ! -vor*uy
-	work_dy(:,iy) = +work1(:,iy)*u(:,iy,1) ! +vor*ux
-      enddo
-      !$omp end parallel do
-
-      !compute divergence
-      call coftxy(work_dx, work1)     !-- to fourier space
-      call cofdx (work1  , work_dx)   !-- d(-vor*uy)/dx
-      call coftxy(work_dy, work1)     !-- to fourier space
-      call cofdy (work1  , work_dy)   !-- d(+vor*ux)/dy
-
+      
       !--right-hand side of poisson eqn 
       !$omp parallel do private(iy)
       do iy=0,ny-1
-	work1(:,iy) = penal (:,iy,1) + penal (:,iy,2)  & !-- divergence of penalty term (fourier-space)
-		     +work_dy(:,iy)  + work_dx(:,iy)     !-- divergence of non-linear term (fourier-space)
+        work1(:,iy) = penal(:,iy,1) + penal(:,iy,2)  !-- divergence of penalty+NL term (fourier-space)
       enddo
-      !$omp end parallel do            
+      !$omp end parallel do      
       
       !------------------------------------------------
       ! solve poisson eqn
@@ -356,13 +356,17 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
       call poisson (work1, press) !--Solve Poisson equation to get the pressure q. q is static pressure p + 0.5*v_abs**2  
       call cofitxy (press, work1) !--Transform pressure to physical space
       
-      
+      !------------------------------------------------
+      ! substract dynamical pressure to get static pressure
+      !------------------------------------------------
       !$omp parallel do private(iy)
       do iy=0,ny-1
-	press(:,iy) = work1(:,iy) - 0.5*(u(:,iy,1)**2 + u(:,iy,2)**2) !--substract dynamical pressure to get static pressure
+        press(:,iy) = work1(:,iy) - 0.5*(u(:,iy,1)**2 + u(:,iy,2)**2)
       enddo
-      !$omp end parallel do      
+      !$omp end parallel do  
+
    else !------------fixed run, no pressure required. 
+   
       !$omp parallel do private(iy)
       do iy=0,ny-1
 	press(:,iy) = 0.0
