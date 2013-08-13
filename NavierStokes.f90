@@ -5,7 +5,7 @@ module SpectralSolver
 
 ! ==========================================================================================================================
 
-subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
+subroutine cal_nlk (time, dt1, nlk, vortk, u, f_mean)
   !---------------------------------------------------------------
   !     determine fourier coeffs of the r.h.s. that is due to
   !     the NON-linear parts and forcing (ie penalisation)
@@ -18,16 +18,15 @@ subroutine cal_nlk (time, dt1, nlk, vortk, beam, u, f_mean)
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (in) :: 		vortk
   real (kind=pr), dimension (0:nx-1, 0:ny-1,1:2), intent (in) :: 	u
   real (kind=pr), dimension (0:nx-1, 0:ny-1,1:2) :: 			penal
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: 		beam
   ! output
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (out) :: 		nlk
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: 			vort_init
   real (kind=pr), intent (out) :: 					dt1
   real (kind=pr), intent (out), dimension(1:2) :: 			f_mean
   ! local variables 
-  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: vort_dx, vort_dy, stream, work2, penvortk
-  real (kind=pr) :: 				u_max, Mean_ux, Mean_uy,  y_chan, H_effective,dx, dy
-  integer :: 					iy,ix, GetIndex
+  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: vort_dx, vort_dy, work2, penvortk
+  real (kind=pr) :: 				u_max,Mean_ux, y_chan, H_effective,dx, dy
+  integer :: 					iy
   
   dx = xl / real (nx)
   dy = yl / real (ny)
@@ -215,9 +214,66 @@ subroutine cal_velocity(time, vortk, u, stream )
 
 end subroutine cal_velocity
 
+
+
+
 !===================================================================================================
 
-subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQuantities )
+
+
+
+subroutine cal_energy ( time, dt1, vor, u, penal )
+  use share_vars
+  implicit none
+  real (kind=pr), intent (in) :: time, dt1
+  real (kind=pr), intent (in) :: vor(0:nx-1,0:ny-1)
+  real (kind=pr), intent (in) :: u(0:nx-1,0:ny-1,1:2)
+  real (kind=pr), intent (in) :: penal(0:nx-1,0:ny-1,1:2)
+  real (kind=pr) :: dx,dy, vor_rms, dissipation, porous_diss, inflow_solid, inflow_mean, kinetic, Mean_ux, Mean_uy
+  dx = xl / real (nx)
+  dy = yl / real (ny)
+    
+  !$omp parallel sections
+    !$omp section
+    ! at this occasion, compute rms value and its derivative
+    vor_rms = dx*dy*sqrt ( sum(vor**2) )
+
+    !$omp section
+    ! fluid kinetic energy
+    kinetic = 0.5d0*dx*dy*sum( ((u(:,:,1)-Mean_ux(time+dt1))**2 + (u(:,:,2)-Mean_uy(time+dt1))**2) )
+    
+    !$omp section
+    ! enstrophy (energy dissipation term)
+    dissipation = nu*dx*dy*sum( vor**2 )
+    
+    !$omp section  
+    ! dissipation in penalty term
+    porous_diss = dx*dy*sum( mask*((u(:,:,1)-maskvx)**2+(u(:,:,2)-maskvy)**2) )
+    
+    !$omp section  
+    ! energy inflow due to penalization
+    inflow_solid = dx*dy*sum( mask*( maskvx*(u(:,:,1)-maskvx) + maskvy*(u(:,:,2)-maskvy)  ) )
+    
+    !$omp section  
+    ! energy inflow (note we use the full mask, not only the actual object)
+    inflow_mean = dx*dy*u_mean_true*sum( Mean_ux(time+dt1)*penal(:,:,1)+Mean_uy(time+dt1)*penal(:,:,2) )
+  !$omp end parallel sections  
+  
+  open (14, file = trim(dir_name)//'/'//trim(simulation_name)//'energies', status = 'unknown', access = 'append')
+  write (14, '(8(es15.8,1x))') time, dt1, vor_rms, kinetic, dissipation, porous_diss, inflow_solid, inflow_mean
+  close (14)
+  
+end subroutine
+
+
+
+
+!===================================================================================================
+
+
+
+
+subroutine pressure ( time, dt1, vortk, press, u, beams )
   !-----------------------------------------------------------------------------------------------
   ! --> Calculates the pressure field given vorticity in Fourier space <--
   !
@@ -233,20 +289,15 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   use PerformanceMeasurement
   use FieldExport
   implicit none
-  integer :: k, l, iy,ix,ixmin,ixmax,iymin,iymax
-  real (kind=pr) :: quot
+  integer :: iy
   real (kind=pr), intent(in) :: time,dt1
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (out) :: press
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 1:2), intent (out) :: u
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 1:2) :: penal
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (in)  :: vortk
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: beam
-  real (kind=pr), dimension (1:4), intent(out) :: Forces !Forces: drag lift drag_unst lift_unst
-  real (kind=pr), dimension (1:7), intent(out) :: FluidIntegralQuantities ! 1= vor_rms 2=vor_rms_dot 3=Fluid kinetic Enegry 4=enstrophy
-  real (kind=pr) :: Mean_ux, Mean_uy
-  real (kind=pr), save :: vor_rms_old=0.0
-!--Working files
-  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work_dy, work_dx, work2
+  type (solid), dimension(1:iBeam), intent(inout) :: beams
+  !--Work arrays
+  real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work2
   real (kind=pr) :: dx, dy
   dx = xl / real (nx)
   dy = yl / real (ny)
@@ -273,7 +324,7 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   ! compute hydrodynamic forces
   ! as this is just the penalty term, we do it here. 
   !------------------------------------------------
-  call cal_drag (time, dt1, penal, beam, Forces)
+  call cal_drag ( time, dt1, penal, beams )
   
   !------------------------------------------------
   ! vor to physical space
@@ -282,39 +333,15 @@ subroutine pressure ( time, dt1, vortk, press, u, beam, Forces, FluidIntegralQua
   !------------------------------------------------
   call cofitxy (vortk, work1) !-- vort in physical space
   
-  !$omp sections
-  !$omp section
-  ! at this occasion, compute rms value and its derivative
-  FluidIntegralQuantities(1) = dx*dy*sqrt ( sum(work1**2) )
-  FluidIntegralQuantities(2) = (FluidIntegralQuantities(1)-vor_rms_old)/dt1      
+  !------------------------------------------------
+  ! compute energy contributions
+  !------------------------------------------------  
+  call cal_energy ( time, dt1, work1, u, penal)
   
-  if ((vor_rms_old==0.0).and.(FluidIntegralQuantities(1).ne.0.0)) then
-    FluidIntegralQuantities(2) =0.0 !first time step, we can't compute vor_rms_dot
-  endif
-    
-  vor_rms_old = FluidIntegralQuantities(1)
-  !$omp section
-  ! fluid kinetic energy
-  FluidIntegralQuantities(3) = 0.5d0*dx*dy*sum( ((u(:,:,1)-Mean_ux(time+dt1))**2 + (u(:,:,2)-Mean_uy(time+dt1))**2) )
-  !$omp section
-  ! enstrophy (energy dissipation term)
-  FluidIntegralQuantities(4) = nu*dx*dy*sum( work1**2 )
-  !$omp section
-  ! dissipation in penalty term
-  FluidIntegralQuantities(5) = dx*dy*sum( mask*((u(:,:,1)-maskvx)**2+(u(:,:,2)-maskvy)**2) )
-  !$omp section
-  ! energy inflow due to penalization
-  FluidIntegralQuantities(6) = dx*dy*sum( mask*( maskvx*(u(:,:,1)-maskvx) + maskvy*(u(:,:,2)-maskvy)  ) )
-  !$omp section
-  ! energy inflow (note we use the full mask, not only the actual object)
-  FluidIntegralQuantities(7) = dx*dy*u_mean_true*sum( Mean_ux(time+dt1)*penal(:,:,1)+Mean_uy(time+dt1)*penal(:,:,2) )
-  !$omp end sections
-
   
   !------------------------------------------------
   ! for fixed beams (like the CFD test) it is not nessesairy to compute the pressure, so we skip what follows.
-  !------------------------------------------------
-  
+  !-----------------------------------------------  
   if ((iFLUSI==1).or.(iSaveBeam>0)) then     
       !------------------------------------------------
       ! right hand side of the pressure poisson eqn. 
@@ -393,7 +420,7 @@ end function GetIndex
 
 !===================================================================================================
 
-subroutine EvolveFluidExplicit(time, dt1, n0, n1, beam, vortk, workvis, nlk, press, u, Forces, FluidIntegralQuantities)
+subroutine EvolveFluidExplicit(time, dt1, n0, n1, beams, vortk, workvis, nlk, u, press )
   use share_vars
   use FieldExport
   implicit none
@@ -401,10 +428,7 @@ subroutine EvolveFluidExplicit(time, dt1, n0, n1, beam, vortk, workvis, nlk, pre
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (inout) :: press
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: stream
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 1:2), intent (inout) :: u
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: beam
-  real (kind=pr), dimension (1:4), intent(out) :: Forces !Forces: drag lift drag_unst lift_unst
-  ! 1= vor_rms 2=vor_rms_dot 3=Fluid kinetic Enegry 4=Dissipation 5=Dissipation(Penalty) 6=EnergyInflow
-  real (kind=pr), dimension (1:7), intent(out) :: FluidIntegralQuantities
+  type (solid), dimension(1:iBeam), intent(inout) :: beams
   real (kind=pr), intent (inout) :: dt1, time
   integer, intent (in) :: n0, n1
   integer :: iy
@@ -413,15 +437,11 @@ subroutine EvolveFluidExplicit(time, dt1, n0, n1, beam, vortk, workvis, nlk, pre
   !	n0 = n   n1 = n+1 (for vortk and workvis)
   !---------------------------------------------------------
 
-  !--dealiase
-  vortk(:,:,n0) = dealiase * vortk(:,:,n0)
-
   !--for the first time step, compute velocity and penalization term explicitly
-  call cal_velocity(time, vortk(:,:,n0), u, stream)
-
+  call cal_velocity ( time, vortk(:,:,n0), u, stream )
   !--calculate RHS
-  call cal_nlk ( time, dt1, nlk (:,:,n0), vortk(:,:,n0), beam , u, fmean(:,n0) )
-
+  call cal_nlk ( time, dt1, nlk (:,:,n0), vortk(:,:,n0), u, fmean(:,n0) )
+  !--compute exp term for viscosity
   call vis ( dt1, workvis(:,:,n1) )
   
   !$omp parallel do private(iy)
@@ -435,16 +455,13 @@ subroutine EvolveFluidExplicit(time, dt1, n0, n1, beam, vortk, workvis, nlk, pre
     u_mean(1) = u_mean(1) + fmean(1,n0)*dt1
     u_mean(2) = u_mean(2) + fmean(2,n0)*dt1
   endif
-  
-  
-  call pressure(time,dt1, vortk(:,:,n1), press, u, beam, Forces, FluidIntegralQuantities)
-
-  forces(3:4)=0.0 ! first time step: unsteady correction fails
+    
+  call pressure ( time,dt1, vortk(:,:,n1), press, u, beams )  
 end subroutine EvolveFluidExplicit
 
 !==============================================================================
 
-subroutine EvolveFluidAB2(time, dt0,dt1, n0, n1, beam,  vortk, workvis, nlk, u, press, Forces, FluidIntegralQuantities)
+subroutine EvolveFluidAB2(time, dt0, dt1, n0, n1, beams, vortk, workvis, nlk, u, press)
   use share_vars
   use FieldExport
   implicit none
@@ -452,14 +469,11 @@ subroutine EvolveFluidAB2(time, dt0,dt1, n0, n1, beam,  vortk, workvis, nlk, u, 
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 0:1), intent (inout) :: vortk, workvis, nlk
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 1:2), intent (inout) :: u
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (out) :: press
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: beam
-  real (kind=pr), dimension (1:4), intent(out) :: Forces !Forces: drag lift drag_unst lift_unst
-  ! 1= vor_rms 2=vor_rms_dot 3=Fluid kinetic Enegry 4=Dissipation 5=Dissipation(Penalty) 6=EnergyInflow
-  real (kind=pr), dimension (1:7), intent(out) :: FluidIntegralQuantities 
+  type (solid), dimension(1:iBeam), intent(inout) :: beams
   real (kind=pr), intent (inout) :: dt0, dt1, time
   real (kind=pr) ::b10,b11
   integer, intent (in) :: n0, n1
-  integer :: iy,ix
+  integer :: iy
 
 
   !$omp parallel do private(iy)
@@ -469,7 +483,7 @@ subroutine EvolveFluidAB2(time, dt0,dt1, n0, n1, beam,  vortk, workvis, nlk, u, 
   !$omp end parallel do
 
   !--Calculate fourier coeffs of nonlinear rhs and forcing (is RHS_n !! )
-  call cal_nlk ( time, dt1, nlk (:,:,n0), vortk(:,:,n0), beam, u, fmean(:,n0) )
+  call cal_nlk ( time, dt1, nlk (:,:,n0), vortk(:,:,n0), u, fmean(:,n0) )
 
   
   b10 = dt1/dt0 * (0.5*dt1 + dt0)
@@ -490,45 +504,41 @@ subroutine EvolveFluidAB2(time, dt0,dt1, n0, n1, beam,  vortk, workvis, nlk, u, 
   endif 
   
   ! in pressure, we now compute the u, penal terms for the next time step.
-  call pressure(time, dt1, vortk(:,:,n1), press, u, beam, Forces, FluidIntegralQuantities)
+  call pressure(time, dt1, vortk(:,:,n1), press, u, beams )
   
 end subroutine EvolveFluidAB2
 
 !==========================================================================================================================
 
-subroutine cal_drag (time, dt1, penal, beam, Forces)
+subroutine cal_drag ( time, dt1, penal, beams )
   use share_vars
   use FieldExport
   implicit none
-  real (kind=pr), intent (in) 					:: time, dt1
-  real (kind=pr), dimension (0:nx-1, 0:ny-1,1:2), intent (in) 	:: penal
-  real (kind=pr), dimension (1:4), intent(out) :: Forces !Forces: drag lift drag_unst lift_unst
-  real (kind=pr), dimension (1:6) :: LeadingEdge !LeadingEdge: x0, y0, vx, vy, ax, ay (Array)
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: beam
-  real (kind=pr), dimension (0:ns-1, 1:2) :: accel
-  real (kind=pr), save :: drag_unst_old, lift_unst_old, drag, lift, lift_unst, drag_unst, drag_unst_new, lift_unst_new
-  real (kind=pr) 	:: dx, dy, norm, alpha, alpha_t, alpha_tt, h_star
-  integer 		    :: ix, iy,ixmin,ixmax,iymin,iymax,i
-
-  call mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge )
+  real (kind=pr), intent (in)                                   :: time, dt1
+  real (kind=pr), dimension (0:nx-1, 0:ny-1,1:2), intent (in)   :: penal
+  real (kind=pr), dimension (1:6)                               :: LeadingEdge
+  type (solid), dimension(1:iBeam), intent(inout)               :: beams
+  real (kind=pr)                                                :: dx, dy, norm, alpha, alpha_t, alpha_tt, h_star
+  integer                                                       :: ixmin,ixmax,iymin,iymax,i 
   
-
-  !--Calculate lift and drag (relative to direction of mean flow)
-  dx = xl/real(nx)
-  dy = yl/real(ny)
+  dx = xl / real (nx)
+  dy = yl / real (ny)
   norm = dx*dy
+  
+  do i=1, iBeam  
+  call mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beams(i) )
 
-  !------------------------------------------------------------------------------------------------------------------------------
-  !--			Compute Drag and Lift forces & unsteady correction terms
-  !------------------------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------
+  !-- Compute Drag and Lift forces
+  !------------------------------------------------------------
   ! optimized 10/11/2011 now using penal from pressure subroutine and the smallest (best) integration windows possible  
   if (iBeam>0) then ! case of a beam with or without cylinder at the leading edge
-    iymax = int( (max( maxval(beam(:,2))+4.0*t_beam, LeadingEdge(2)+2.0*r_cylinder))/dy)
-    iymin = int( (min( minval(beam(:,2))-4.0*t_beam, LeadingEdge(2)-2.0*r_cylinder))/dy)
+    iymax = int( (max( maxval(beams(i)%y)+4.0*t_beam, LeadingEdge(2)+2.0*r_cylinder))/dy)
+    iymin = int( (min( minval(beams(i)%y)-4.0*t_beam, LeadingEdge(2)-2.0*r_cylinder))/dy)
     ! absolute upper limit for xmin is the leading edge - 4 times thickness
-    ixmin = int( min( (LeadingEdge(1)-max(2.5*r_cylinder, 4.0*t_beam)), (minval(beam(:,1))-4.0*t_beam) )  /dx)
+    ixmin = int( min( (LeadingEdge(1)-max(2.5*r_cylinder, 4.0*t_beam)), (minval(beams(i)%x)-4.0*t_beam) )  /dx)
     ! even if the beam is hanging, its minimum x value is the leading edge
-    ixmax = int( (maxval(beam(:,1))+4.0*t_beam)  /dx)
+    ixmax = int( (maxval(beams(i)%x)+4.0*t_beam)  /dx)
   else
     iymax=ny-1
     iymin=0
@@ -550,36 +560,33 @@ subroutine cal_drag (time, dt1, penal, beam, Forces)
   if (iymin<0)    iymin = 0
   if (iymax>ny-1) iymax = ny-1
 
+  ! lift / drag:
+  beams(i)%Force(1) = sum(penal(ixmin:ixmax,iymin:iymax,1)) * norm
+  beams(i)%Force(2) = sum(penal(ixmin:ixmax,iymin:iymax,2)) * norm
 
-  drag = sum(penal(ixmin:ixmax,iymin:iymax,1)) * norm
-  lift = sum(penal(ixmin:ixmax,iymin:iymax,2)) * norm
+  !------------------------------------------------------------
+  !-- Compute unsteady lift/drag corrections
+  !------------------------------------------------------------
+  ! all save variables go to disk; there shouldn't be a problem with restarting
+  beams(i)%drag_unst_new = sum (maskvx(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps
+  beams(i)%lift_unst_new = sum (maskvy(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps  
+  
+  !compute unsteady correction
+  if (beams(i)%UnsteadyCorrectionsReady) then
+  beams(i)%Force_unst(1)   = (beams(i)%drag_unst_new - beams(i)%drag_unst_old)/dt1 
+  beams(i)%Force_unst(2)   = (beams(i)%lift_unst_new - beams(i)%lift_unst_old)/dt1  
+  else
+  beams(i)%Force_unst = 0.0
+  endif
+  
+  beams(i)%drag_unst_old = beams(i)%drag_unst_new  !iterate
+  beams(i)%lift_unst_old = beams(i)%lift_unst_new  !iterate
+  
+  ! now, in any case, we're ready!
+  beams(i)%UnsteadyCorrectionsReady = .true.
 
-  !------------------------------------------------------------------------------------------------------------------------------
-  !--			compute unsteady lift/drag corrections
-  !------------------------------------------------------------------------------------------------------------------------------
-  ! numercial correction, works, no significant disadvantage w.r.t beamßelement method 28-3-2012
-  drag_unst_new = sum (maskvx(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps
-  lift_unst_new = sum (maskvy(ixmin:ixmax,iymin:iymax)*mask(ixmin:ixmax,iymin:iymax)) * norm * eps  
-  
-  drag_unst   = (drag_unst_new - drag_unst_old)/dt1 !compute unsteady correction
-  lift_unst   = (lift_unst_new - lift_unst_old)/dt1  
-  drag_unst_old = drag_unst_new  !iterate
-  lift_unst_old = lift_unst_new  !iterate
- 
 
-  Forces(1) = drag
-  Forces(2) = lift
-  Forces(3) = drag_unst
-  Forces(4) = lift_unst  
-  
-! !   if (iBeam>0) then
-! !       ! compute unsteady corrections via the beam 
-! !       accel = (beam(:,3:4)-beam_tmp(:,3:4))/dt1 ! first order derivative
-! !       Forces(3) = sum(accel(:,1))*2.0*ds*t_beam
-! !       Forces(4) = sum(accel(:,2))*2.0*ds*t_beam
-! !       beam_tmp=beam !beam_tmp is global. why? because an automatic object must not have a save attribute. sometimes, I hate fortran.
-! !   endif
-  
+  enddo ! end loop over beams
 end subroutine cal_drag
 
 !==========================================================================================================================================================
@@ -599,12 +606,10 @@ subroutine ComputePressureSnapshot ( time, vortk, press )
   use PerformanceMeasurement
   use FieldExport
   implicit none
-  integer :: k, l, iy,ix,ixmin,ixmax,iymin,iymax
   real (kind=pr), intent(in) :: time
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (out) :: press
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 1:2) :: penal, u
   real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (in)  :: vortk  
-  real (kind=pr) :: Mean_ux, Mean_uy
 !--Working files
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: work1, work_dy, work_dx, work2
   real (kind=pr) :: dx, dy

@@ -1,4 +1,4 @@
-subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau_beam_old, ivideo, u)
+subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beams, ivideo, u )
   use share_vars
   use FieldExport
   use SpectralSolver
@@ -7,8 +7,9 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
 ! This subroutine set up the inital flow which is normally
 ! a mean flow.
 !======================================================
-  integer :: ibackup, ix, iy, nx_file, ny_file
+  integer :: ibackup, ix, iy, nx_file, ny_file,i,ns_file
   integer :: ierr = 0
+  type (solid), intent(inout), dimension(1:iBeam) :: beams
   integer, intent (out) :: ivideo
   real (kind=pr) :: time1
   real (kind=pr) :: x, y
@@ -17,10 +18,7 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
   real (kind=pr) :: a1, a2, a3
   real (kind=pr) :: s1, s2, s3,dx,dy
   real (kind=pr) :: w1, w2, w3,  y_chan, H_effective, Mean_Ux
-  ! Beam indices: 1=beam_x 2=beam_y 3=beam_vx 4=beam_vy 5=theta 6=theta_dot
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (inout) :: beam
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: vort, work1
-  real (kind=pr), dimension (0:ns-1), intent (inout) :: bpressure, tau_beam_old
   integer, intent (inout) :: n1
   real (kind=pr), intent (inout) :: time, dt1
   real (kind=pr), dimension (0:nx-1, 0:ny-1, 0:1), intent (out)  :: nlk, vortk, workvis, u
@@ -33,8 +31,6 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
   nlk 		= 0.
   dx 		= xl/real(nx)
   dy 		= yl/real(ny)
-  bpressure 	= 0.0
-  tau_beam_old 	= 0.0
   ivideo 	= 1 ! counter for the snapshots
   
   write (*,'(" --- inicond = ",i3)') inicond
@@ -54,7 +50,21 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
         if (time1 > time) then
           time = time1
           write (*,*)'last record in runtime_backup'//name1//'.in', ' is at time = ', time
-          read (15) n1, dt1, vortk, nlk, workvis, mask, maskvx, maskvy, beam, bpressure, ivideo, u, tau_beam_old
+          read (15) n1, dt1, vortk, nlk, workvis, mask, maskvx, maskvy, ivideo, u
+          read (15) ns_file
+          if (ns .ne. ns_file) then
+            write(*,*) "ns not the same in backup and params file!"
+            stop
+          endif
+          
+          ! read in all the beams
+          do i = 1, iBeam
+            read (15) beams(i)%x, beams(i)%y, beams(i)%vx, beams(i)%vy, beams(i)%theta, beams(i)%theta_dot
+            read (15) beams(i)%pressure_new, beams(i)%pressure_old, beams(i)%tau_new, beams(i)%tau_old
+            read (15) beams(i)%Force, beams(i)%Force_unst, beams(i)%Force_press, beams(i)%E_kinetic, beams(i)%E_pot, beams(i)%E_elastic , beams(i)%x0, beams(i)%y0
+            read (15) beams(i)%AngleBeam, beams(i)%iMouvement, beams(i)%drag_unst_new, beams(i)%drag_unst_old, beams(i)%lift_unst_new, beams(i)%lift_unst_old
+            read (15) beams(i)%UnsteadyCorrectionsReady, beams(i)%dt_old, beams(i)%beam_oldold
+          enddo
         endif
       close (15)
       100 enddo
@@ -82,13 +92,6 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beam, bpressure, tau
       enddo
       vort = vort * (1.0-mask*eps) ! no initial vorticity inside solid region
       call coftxy(vort,vortk)
-  elseif (inicond == 99) then !==================================================================================================
-      call coftxy( vor_init, vortk(:,:,1) ) ! in this scenario, mask_sponge contains the last vort field in a previous simulation, so just transform it
-      call coftxy( vor_init, vortk(:,:,0) ) ! in this scenario, mask_sponge contains the last vort field in a previous simulation, so just transform it
-      workvis=0.0
-      call SaveGif (vor_init, trim(dir_name)//"/initial_condition")
-      u=0.0
-      time=time_init
   elseif (inicond == 111) then
       ! ------------------------------------
       ! reads in a binary vorticity file.

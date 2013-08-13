@@ -10,7 +10,7 @@
 module fftw33_descriptors
   use share_vars  
   implicit none
-  integer, save :: nthreads = 4
+  integer, save :: nthreads ! this holds (globally) the number of threads
   integer*8, save :: Desc_Handle_xy_f, Desc_Handle_xy_b
 end module fftw33_descriptors
 
@@ -21,13 +21,27 @@ subroutine fft_initialize
 !====================================================================
   use share_vars
   use fftw33_descriptors
+  use omp_lib
   implicit none
   include 'fftw3.f'
 
-  integer :: ierr, init_flag = FFTW_MEASURE
+  integer :: ierr, init_flag = FFTW_MEASURE, i,id
   real (kind=pr), dimension (0:nx-1, 0:ny-1) ::  fftwdata_r
   complex (kind=pr), dimension(0:nx/2, 0:ny-1) :: fftwdata_c
 
+  !----------------------------------------------------
+  ! here, we determine how many thready we have available
+  !----------------------------------------------------  
+  !$omp parallel private(id)
+  id = omp_get_thread_num()
+  !$omp barrier
+  if ( id == 0 ) then
+    nthreads = omp_get_num_threads()
+  end if
+  !$omp end parallel  
+  write (*,*) "fftw wrapper: nthreads=", nthreads
+  
+  
   ! Initialize two-dimensional FFT
   if ( precision(0.0) .eq. precision(0d0)) then
     write (*,*) 'double precision'
@@ -52,6 +66,55 @@ subroutine fft_initialize
 end subroutine fft_initialize
 
 
+
+subroutine fft_initialize_best
+!====================================================================
+!     Allocate memory and initialize FFT
+!====================================================================
+  use share_vars
+  use fftw33_descriptors
+  use omp_lib
+  implicit none
+  include 'fftw3.f'
+
+  integer :: ierr, init_flag = FFTW_PATIENT, i,id
+  real (kind=pr), dimension (0:nx-1, 0:ny-1) ::  fftwdata_r
+  complex (kind=pr), dimension(0:nx/2, 0:ny-1) :: fftwdata_c
+
+  !----------------------------------------------------
+  ! here, we determine how many thready we have available
+  !----------------------------------------------------  
+  !$omp parallel private(id)
+  id = omp_get_thread_num()
+  !$omp barrier
+  if ( id == 0 ) then
+    nthreads = omp_get_num_threads()
+  end if
+  !$omp end parallel  
+  write (*,*) "fftw wrapper: nthreads=", nthreads
+  
+  
+  ! Initialize two-dimensional FFT
+  if ( precision(0.0) .eq. precision(0d0)) then
+    write (*,*) 'double precision'
+    ! set up threads
+    call dfftw_init_threads(ierr)
+    call dfftw_plan_with_nthreads(nthreads)
+    ! forward
+    call dfftw_plan_dft_r2c_2d(Desc_Handle_xy_f, nx, ny, fftwdata_r, fftwdata_c, init_flag)
+    ! backward
+    call dfftw_plan_dft_c2r_2d(Desc_Handle_xy_b, nx, ny, fftwdata_c, fftwdata_r, init_flag)
+  else
+    write (*,*) 'single precision'
+    ! set up threads
+    call sfftw_init_threads(ierr)
+    call sfftw_plan_with_nthreads(nthreads)
+    ! forward
+    call sfftw_plan_dft_r2c_2d(Desc_Handle_xy_f, nx, ny, fftwdata_r, fftwdata_c, init_flag)
+    ! backward
+    call sfftw_plan_dft_c2r_2d(Desc_Handle_xy_b, nx, ny, fftwdata_c, fftwdata_r, init_flag)
+  endif
+end subroutine
 
 subroutine fft_free
 !====================================================================

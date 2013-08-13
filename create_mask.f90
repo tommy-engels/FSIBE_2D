@@ -1,18 +1,19 @@
 !==============================================================================================================================================
-subroutine create_mask ( time, beam )
+subroutine create_mask ( time, beams )
   use share_vars
   use FieldExport
   implicit none
-  integer :: i, j, iymin, iymax,ix,iy
+  integer :: i, j, ix,iy,ib
   real (kind=pr) :: mask_cutoff, dx, dy, a, b, volume, ds_inter, N, h_star, temp, alpha1,alpha2,gamma,ConvertAngle, sponge_size, sponge_size_star, tmp,x
   real (kind=pr) :: y_chan, H_effective, Mean_ux, Mean_uy
-  integer :: iixmax, iixmin, iiymax, iiymin, n_inter, n_subpoints
+  integer :: ixmax, ixmin, iymax, iymin, n_inter, n_subpoints
   real (kind=pr), intent (in) :: time
 ! Beam indices: 1=beam_x 2=beam_y 3=beam_vx 4=beam_vy 5=theta 6=theta_dot
-  real (kind=pr), dimension (0:ns-1, 1:6), intent (in) :: beam
+  real (kind=pr), dimension (0:ns-1, 1:6)   :: beam
+  type (solid), dimension(1:iBeam), intent(in) :: beams
   real (kind=pr) :: alpha, alpha_t, alpha_tt 
   real (kind=pr), dimension(1:6) :: LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
-  call mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge )
+  
   
   !--------------------------------------------------------------------------------
   !		Initialization
@@ -20,12 +21,6 @@ subroutine create_mask ( time, beam )
   N=N_smooth
   dx=xl/real(nx)
   dy=yl/real(ny)
-
-  ! check if everthing seems to be ok
-  if ((maxval(beam(:,1))>xl).or.(minval(beam(:,1))<0.0).or.(maxval(beam(:,2))>yl).or.(minval(beam(:,2))<0.0)) then
-    write (*,*) "fatal in mask: out of domain"
-    stop
-  endif
 
   h_star=h_channel+N*dy ! channel walls are always in y-direction
 
@@ -63,11 +58,8 @@ subroutine create_mask ( time, beam )
       !------------------------------------
 !       iymin = nint ( h_channel / dy ) + 1 ! note we set the actual BC to one
 !       iymax = nint ( (yl-h_channel) / dy ) - 1 ! note we set the actual BC to one
-!       
 !       mask = 1.0      
-!       mask(:,iymin:iymax) = 0.0
-      
-      
+!       mask(:,iymin:iymax) = 0.0 
   endif
 
   !--------------------------------------------------------------------------------
@@ -83,6 +75,17 @@ subroutine create_mask ( time, beam )
   ! Note it really matters what you do first, second, third
   !--------------------------------------------------------------------------------
   if (iBeam>0) then
+  do ib = 1, iBeam !loop over beams
+    call mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beams(ib) )
+    !------------------------
+    ! convert beam to old format
+    !-----------------------
+    beam(:,1) = beams(ib)%x
+    beam(:,2) = beams(ib)%y
+    beam(:,3) = beams(ib)%vx
+    beam(:,4) = beams(ib)%vy
+    beam(:,5) = beams(ib)%theta
+    beam(:,6) = beams(ib)%theta_dot
     !------------------------
     ! Draw beam segments
     !------------------------
@@ -113,6 +116,7 @@ subroutine create_mask ( time, beam )
     if (iSharpTrailing==0) then
       call DrawADot( beam(ns-1,1),beam(ns-1,2), beam(ns-1,3), beam(ns-1,4), t_beam, N)
     endif
+  enddo
   endif
 
   !-------------------------------------------------------------------------------------------
@@ -132,10 +136,10 @@ subroutine create_mask ( time, beam )
       !-------------------------
       !--left half of the sponge
       !-------------------------
-      iixmax=nint ((0.5*sponge_size_star)/dx)
-      iixmin=0
+      ixmax=nint ((0.5*sponge_size_star)/dx)
+      ixmin=0
       !$omp parallel do private(ix,iy,y_chan,tmp,x)
-      do ix=iixmin, iixmax
+      do ix=ixmin, ixmax
       do iy=0,ny-1
         y_chan = (real(iy)*dy-h_channel)
         x = 0.75*sponge_size_star - real(ix)*dx
@@ -156,10 +160,10 @@ subroutine create_mask ( time, beam )
       !-------------------------
       !--right half of the sponge
       !-------------------------
-      iixmin=nint ((0.5*sponge_size_star)/dx)
-      iixmax=nint ((1.0*sponge_size_star)/dx)
+      ixmin=nint ((0.5*sponge_size_star)/dx)
+      ixmax=nint ((1.0*sponge_size_star)/dx)
       !$omp parallel do private(ix,iy,y_chan,tmp,x)
-      do ix=iixmin, iixmax
+      do ix=ixmin, ixmax
       do iy=0,ny-1
         y_chan = (real(iy)*dy-h_channel)
         x = real(ix)*dx - 0.5*sponge_size_star
@@ -179,8 +183,8 @@ subroutine create_mask ( time, beam )
       !----------------------------
       ! modified version, sharp mask function     
       !----------------------------
-!       iixmin = 0
-!       iixmax = nint (SpongeSize/dx)
+!       ixmin = 0
+!       ixmax = nint (SpongeSize/dx)
 !       H_effective = yl-2.0*h_channel
 !       
 !       !$omp parallel do private (iy,y_chan)
@@ -188,11 +192,11 @@ subroutine create_mask ( time, beam )
 !         y_chan = (real(iy)*dy-h_channel)        
 !         ! set parabolic velocity profile
 !         if ((y_chan>0.0).and.(y_chan<H_effective)) then
-! 	  maskvx( iixmin:iixmax, iy ) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
+! 	  maskvx( ixmin:ixmax, iy ) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
 !         else
-!           maskvx( iixmin:iixmax, iy ) =  0.0
+!           maskvx( ixmin:ixmax, iy ) =  0.0
 !         endif        
-! 	mask ( iixmin:iixmax, iy ) = 1.0
+! 	mask ( ixmin:ixmax, iy ) = 1.0
 !       enddo
 !       !$omp end parallel do
       
@@ -221,7 +225,7 @@ subroutine create_sponge_mask()
   implicit none
   real (kind=pr) :: dy,dx,sponge_begin, epsilon_sponge
   real (kind=pr) :: sponge_size, tmp,x, N, sponge_size_star,tmp1,tmp2,tmp3,tmp4
-  integer :: ix, iixmin, iixmax, iy
+  integer :: ix, ixmin, ixmax, iy
 
   epsilon_sponge=eps_sponge
   N=N_smooth !smoothing layer thickness
@@ -234,18 +238,18 @@ subroutine create_sponge_mask()
       sponge_size = sponge_size_star - 2.0*N*dx
       sponge_begin = xl - sponge_size_star
       ! left half of the sponge
-      iixmax=nint ((xl-0.5*sponge_size_star)/dx)
-      iixmin=nint (sponge_begin/dx)
-      do ix=iixmin, iixmax
+      ixmax=nint ((xl-0.5*sponge_size_star)/dx)
+      ixmin=nint (sponge_begin/dx)
+      do ix=ixmin, ixmax
 	x = xl-0.5*sponge_size_star - real(ix)*dx
 	call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
 	mask_sponge(ix,:)=tmp
       enddo
 
       !right half of the sponge
-      iixmin=nint ((xl-0.5*sponge_size_star)/dx)
-      iixmax=nx-1
-      do ix=iixmin, iixmax
+      ixmin=nint ((xl-0.5*sponge_size_star)/dx)
+      ixmax=nx-1
+      do ix=ixmin, ixmax
 	x = real(ix)*dx - xl +0.5*sponge_size_star-1.0*dx
 	call SmoothStep (tmp, x, sponge_size*0.4, N*real(dx) )
 	mask_sponge(ix,:)=tmp
@@ -256,24 +260,24 @@ subroutine create_sponge_mask()
       sponge_begin = xl - sponge_size_star
 
       ! left half of the sponge
-      iixmax=nint ((0.5*sponge_size_star)/dx)
-      iixmin=0
-      do ix=iixmin, iixmax
+      ixmax=nint ((0.5*sponge_size_star)/dx)
+      ixmin=0
+      do ix=ixmin, ixmax
         x = 0.5*sponge_size_star - real(ix)*dx
         call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
         mask_sponge(ix,:)=tmp
       enddo
 
       !right half of the sponge
-      iixmin=nint ((0.5*sponge_size_star)/dx)
-      iixmax=nint ((1.0*sponge_size_star)/dx)
-      do ix=iixmin, iixmax
+      ixmin=nint ((0.5*sponge_size_star)/dx)
+      ixmax=nint ((1.0*sponge_size_star)/dx)
+      do ix=ixmin, ixmax
         x = real(ix)*dx - 0.5*sponge_size_star
         call SmoothStep (tmp, x, sponge_size*0.5, N*real(dx) )
         mask_sponge(ix,:)=tmp
       enddo
 
-      do ix=0,iixmax
+      do ix=0,ixmax
       do iy=0,ny-1
         if (mask(ix,iy)*eps>0.0) mask_sponge(ix,iy)= mask_sponge(ix,iy)*(1.0-mask(ix,iy)*eps)
       enddo
@@ -297,7 +301,10 @@ subroutine create_sponge_mask()
   endif
 
   mask_sponge=mask_sponge/epsilon_sponge
+  
+  if ((iSponge>0).and.(iSponge<=3)) then
   call SaveField(trim(dir_name)//'/fields/'//trim(simulation_name)//'masksponge', mask_sponge, 1, xl,yl, "mask")
+  endif
 
 
   
@@ -381,7 +388,7 @@ subroutine DrawHinge (pointx, pointy, alpha1, alpha2, vx, vy, t, N)
   use share_vars
   implicit none
   real (kind=pr), intent (in)  :: pointx, pointy, vx, vy, t, N, alpha1, alpha2
-  real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle, beta1, beta2, zeta1, zeta2, zeta3
+  real (kind=pr) :: t_star, dx, dy, R, temp, gamma, ConvertAngle, beta1, beta2
   integer :: ixmax, ixmin, iymax, iymin, i, j
   logical :: inside1, inside2
   

@@ -31,8 +31,10 @@ real (kind=pr) function Mean_Ux(time)
         Mean_Ux = 0.0
   elseif (iMeanVelocity==6) then
 	Mean_ux = time 
-  elseif (iMeanVelocity==11) then
+  elseif (iMeanVelocity==11) then ! zero mean pressure forcing
 	Mean_ux = u_mean(1)
+  elseif (iMeanVelocity==22) then 
+        Mean_ux = .1
   endif
 
 
@@ -73,6 +75,8 @@ real (kind=pr) function Mean_Uy(time)
 	Mean_uy = 0.0
   elseif (iMeanVelocity==11) then
 	Mean_uy = u_mean(2)	
+  else
+        Mean_uy = 0.d0
   endif
 
 
