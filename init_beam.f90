@@ -4,6 +4,7 @@ subroutine init_beams ( beams )
   ! straight lines, possible oriented with different angles, at rest.
   !---------------------------------------------------
   use share_vars
+  use motion
   implicit none
   integer :: n, i
   type(solid), dimension (1:iBeam), intent (out) :: beams  
@@ -25,6 +26,8 @@ subroutine init_beams ( beams )
     allocate ( beams(i)%y(0:ns-1) )
     allocate ( beams(i)%vx(0:ns-1) )
     allocate ( beams(i)%vy(0:ns-1) )
+    allocate ( beams(i)%ax(0:ns-1) )
+    allocate ( beams(i)%ay(0:ns-1) )
     allocate ( beams(i)%theta(0:ns-1) )
     allocate ( beams(i)%theta_dot(0:ns-1) )
     allocate ( beams(i)%pressure_old(0:ns-1) )
@@ -44,11 +47,34 @@ subroutine init_beams ( beams )
   beams(1)%AngleBeam = AngleBeam
   beams(1)%phase = 0.0
   
+  if (iBeam>1) then
   beams(2)%x0 = x0 + 1.25
   beams(2)%y0 = y0
   beams(2)%iMouvement = iMotion
   beams(2)%AngleBeam = AngleBeam
-  beams(2)%phase = pi
+  select case ( beams(2)%iMouvement )
+    case (300)
+      beams(2)%phase = 0.00*pi ! in-phase case
+    case (301)
+      beams(2)%phase = 0.25*pi
+    case (302)
+      beams(2)%phase = 0.50*pi
+    case (303)
+      beams(2)%phase = 0.75*pi
+    case (304)
+      beams(2)%phase = 1.00*pi ! out-of-phase        
+    case (305)
+      beams(2)%phase = 1.25*pi
+    case (306)
+      beams(2)%phase = 1.50*pi
+    case (307)
+      beams(2)%phase = 1.75*pi      
+    case default
+      write (*,*) "error...iMotion bad bad"
+      stop
+  end select
+  write (*,'("*** (dragonfly) phase=",es12.4)') beams(2)%phase/pi
+  endif
   
   
   !---------------------------------------------
@@ -62,6 +88,8 @@ subroutine init_beams ( beams )
     beams(i)%y = 0.0
     beams(i)%vx = 0.0
     beams(i)%vy = 0.0
+    beams(i)%ax = 0.0
+    beams(i)%ay = 0.0
     beams(i)%theta = 0.0
     beams(i)%theta_dot = 0.0
     beams(i)%pressure_old = 0.0
@@ -69,6 +97,7 @@ subroutine init_beams ( beams )
     beams(i)%tau_old = 0.0
     beams(i)%tau_new = 0.0   
     beams(i)%beam_oldold = 0.0
+    beams(i)%Inertial_Force = 0.0
     ! this is used for unst correction computation:
     beams(i)%drag_unst_new = 0.0
     beams(i)%drag_unst_old = 0.0
@@ -84,6 +113,8 @@ subroutine init_beams ( beams )
       beams(i)%y(n) = LeadingEdge(2)
       beams(i)%vx(n)= 0.0
       beams(i)%vy(n)= 0.0
+      beams(i)%ax(n)= 0.0
+      beams(i)%ay(n)= 0.0
     enddo
     call integrate_position (0.0, beams(i)) ! to take static angle into account
   enddo

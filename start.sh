@@ -2,7 +2,7 @@ export LC_ALL=C
 unset MAKEFLAGS
 module load intel/11.1.080
 OAR_FILE="meso_OMP.oar"
-OAR_FILE="job.oar"
+#OAR_FILE="job.oar"
 
 
 #------------------------------------------------------

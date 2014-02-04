@@ -1,4 +1,5 @@
 module SpectralSolver
+use motion
 
   implicit none
   contains
@@ -25,8 +26,8 @@ subroutine cal_nlk (time, dt1, nlk, vortk, u, f_mean)
   real (kind=pr), intent (out), dimension(1:2) :: 			f_mean
   ! local variables 
   real (kind=pr), dimension (0:nx-1, 0:ny-1) :: vort_dx, vort_dy, work2, penvortk
-  real (kind=pr) :: 				u_max,Mean_ux, y_chan, H_effective,dx, dy
-  integer :: 					iy
+  real (kind=pr) :: 				u_max,Mean_ux, y_chan, H_effective,dx, dy, summe
+  integer :: 					iy, is, ix, ixmax,ixmin
   
   dx = xl / real (nx)
   dy = yl / real (ny)
@@ -84,7 +85,7 @@ subroutine cal_nlk (time, dt1, nlk, vortk, u, f_mean)
   ! Calculate boundary penalization term in Fourier space
   !-----------------------------------------------------------------------------------------
 
-  if ((iBeam>0).or.(iWalls>0).or.(iCylinder>0)) then
+  if ((iBeam>0).or.(iWalls>0).or.(iCylinder>0).or.(iSponge==22)) then
     !$omp parallel do private(iy)
     do iy=0,ny-1
       penal(:,iy,1) = -mask(:,iy) * (u(:,iy,1) - maskvx(:,iy))  ! ux: x-component of the relative velocity
@@ -97,6 +98,30 @@ subroutine cal_nlk (time, dt1, nlk, vortk, u, f_mean)
       f_mean(1) = sum(penal(:,:,1)) / real(nx*ny)
       f_mean(2) = sum(penal(:,:,2)) / real(nx*ny)
     endif
+    
+    !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+    if (iSponge == 10) then
+      call coftxy ( u(:,:,1), work2 )
+      call cofdx  ( work2, penvortk ) 
+      call cofitxy( penvortk, work2 ) ! work2= dux/dx      
+      ! work2 penalty term for dux_dx      
+      work2 = -mask_sponge*work2      
+      ixmin = nint ((xl-SpongeSize)/dx)
+      ixmax = nx - 1 - 15
+
+      
+      do iy = 0, ny-1
+        ! loop over one line
+        do ix = ixmin, ixmax
+          summe = 0.d0
+          do is = ixmin, ix-1
+            summe = summe + 0.5*( work2(is,iy) + work2(is+1,iy) )*dx
+          enddo
+          penal(ix,iy,1) = penal(ix,iy,1) + summe
+        enddo        
+      enddo
+    endif
+    !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
     !--Calculate x-derivative in Fourier space
     call coftxy (penal(:,:,2), work2) ! fourier transformation (work2::out)
@@ -114,8 +139,7 @@ subroutine cal_nlk (time, dt1, nlk, vortk, u, f_mean)
   ! Calculate vorticity sponge term
   !-----------------------------------------------------------------------------------------
 
-  if ((iSponge>0).and.(iSponge<4)) then
-  
+  if (((iSponge>0).and.(iSponge<4)).or.(iSponge==22)) then  
       !------------------------------------------------------------------------------------
       !--Sponge modification:
       !------------------------------------------------------------------------------------
@@ -123,41 +147,14 @@ subroutine cal_nlk (time, dt1, nlk, vortk, u, f_mean)
       penvortk=vortk !stupid: you cannot modify an input argument, therefore duplicate
       call cofitxy(penvortk, work2) !transformation into physical space      
 
-      if (iSpongeType ==1) then !poisseuille sponge - forces linear vorticity profile
-      
-          !set the vorticity profile
-          H_effective=yl-2.0*h_channel
-          
-          !$omp parallel do private(iy,y_chan)
-          do iy=0,ny-1
-            ! the Poisseuille flow requires a linear vorticity
-            y_chan = real(iy)*dy-h_channel
-            if ((y_chan>0.0).and.(y_chan<H_effective)) then
-            vort_init(:,iy) = (-6.0*Mean_ux(time)/H_effective)*(1.0-2.0*y_chan/H_effective)
-            else
-            vort_init(:,iy) = 0.0
-            endif
-          enddo
-          !$omp end parallel do
-          
-          !$omp parallel do private(iy)
-          do iy=0,ny-1
-            work2(:,iy) = mask_sponge(:,iy) * (work2(:,iy)-vort_init(:,iy)) ! perform penalization = multiply with the spongemask
-          enddo
-          !$omp end parallel do
-          
-      elseif (iSpongeType ==2) then !No vorticity sponge
-      
-          !$omp parallel do private(iy)
-          do iy=0,ny-1
-            work2(:,iy) = mask_sponge(:,iy) * work2(:,iy) ! perform penalization = multiply with the spongemask
-          enddo
-          !$omp end parallel do
-          
-      endif     
-
+      !$omp parallel do private(iy)
+      do iy=0,ny-1
+        work2(:,iy) = mask_sponge(:,iy) * work2(:,iy) ! perform penalization = multiply with the spongemask
+      enddo
+      !$omp end parallel do
+             
       call coftxy(work2,penvortk) ! and back to fourier space. now penvortk is penalized with a sponge
-      
+
       ! add the actual term (in Fourier space)
       !$omp parallel do private(iy)
       do iy=0,ny-1
@@ -331,7 +328,9 @@ subroutine pressure ( time, dt1, vortk, press, u, beams )
   ! you need it for the non-linear term in the 
   ! pressure eqn, and you compute vor_rms
   !------------------------------------------------
-  call cofitxy (vortk, work1) !-- vort in physical space
+  call cofitxy ( vortk, work1 ) !-- vort in physical space
+  ! since you have vort here, compute also time average
+  call time_avg_vort ( time, dt1, work1 )
   
   !------------------------------------------------
   ! compute energy contributions
@@ -525,7 +524,11 @@ subroutine cal_drag ( time, dt1, penal, beams )
   dy = yl / real (ny)
   norm = dx*dy
   
-  do i=1, iBeam  
+  !!!!!!!!!!!!!
+  do i = 1, iBeam 
+  !!!!!!!!!!!!!
+  
+  
   call mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beams(i) )
 
   !------------------------------------------------------------
@@ -533,12 +536,12 @@ subroutine cal_drag ( time, dt1, penal, beams )
   !------------------------------------------------------------
   ! optimized 10/11/2011 now using penal from pressure subroutine and the smallest (best) integration windows possible  
   if (iBeam>0) then ! case of a beam with or without cylinder at the leading edge
-    iymax = int( (max( maxval(beams(i)%y)+4.0*t_beam, LeadingEdge(2)+2.0*r_cylinder))/dy)
-    iymin = int( (min( minval(beams(i)%y)-4.0*t_beam, LeadingEdge(2)-2.0*r_cylinder))/dy)
+    iymax = int( (max( maxval(beams(i)%y)+1.5*t_beam, LeadingEdge(2)+2.0*r_cylinder))/dy)
+    iymin = int( (min( minval(beams(i)%y)-1.5*t_beam, LeadingEdge(2)-2.0*r_cylinder))/dy)
     ! absolute upper limit for xmin is the leading edge - 4 times thickness
-    ixmin = int( min( (LeadingEdge(1)-max(2.5*r_cylinder, 4.0*t_beam)), (minval(beams(i)%x)-4.0*t_beam) )  /dx)
+    ixmin = int( min( (LeadingEdge(1)-max(2.5*r_cylinder, 1.5*t_beam)), (minval(beams(i)%x)-1.5*t_beam) )  /dx)
     ! even if the beam is hanging, its minimum x value is the leading edge
-    ixmax = int( (maxval(beams(i)%x)+4.0*t_beam)  /dx)
+    ixmax = int( (maxval(beams(i)%x)+1.5*t_beam)  /dx)
   else
     iymax=ny-1
     iymin=0
@@ -660,6 +663,24 @@ subroutine ComputePressureSnapshot ( time, vortk, press )
   press = work1 - 0.5*(u(:,:,1)**2 + u(:,:,2)**2) !--substract dynamical pressure to get static pressure
    
 end subroutine ComputePressureSnapshot
+
+
+
+
+subroutine time_avg_vort ( time, dt, vor )
+  ! I think this is technically only true up to dt (first order) but who cares
+  use share_vars
+  implicit none
+  real (kind=pr), intent (in)  :: time, dt
+  real (kind=pr), dimension (0:nx-1, 0:ny-1), intent (in)  :: vor
+  integer :: iy
+  
+  !$omp parallel do private(iy)
+  do iy=0,ny-1
+    vor_mean(:,iy) = (vor_mean(:,iy)*time + dt*vor(:,iy)) / (time+dt)
+  enddo
+  !$omp end parallel do 
+end subroutine time_avg_vort
 
 
 end module SpectralSolver

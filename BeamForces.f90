@@ -1,4 +1,5 @@
 module BeamForces
+use motion
   implicit none
   contains
 

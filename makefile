@@ -1,11 +1,12 @@
 ## Makefile for 2D DNS
 ## Build on Babel and on Duke
 
-MOD_FILES = share_vars gif_util nrtype nrutil Interpolation CompressMatrixCSR FieldExport PerformanceMeasurement BeamForces 
+MOD_FILES = share_vars gif_util nrtype nrutil Interpolation mouvement CompressMatrixCSR FieldExport PerformanceMeasurement BeamForces 
 SUB_FILES = cal_vis cofdx cofdxdx cofdxdy NavierStokes\
-cofdy cofdydy dealiase_mask mouvement mkl_lapack mean_velocity\
+cofdy cofdydy dealiase_mask mean_velocity\
 init_fields params poisson integrate_position BeamIO\
-save_fields time_step init_beam SolidSolver create_mask
+save_fields time_step init_beam create_mask
+# mkl_lapack
 PROG_FILE = dns
 
 
@@ -72,7 +73,7 @@ ifeq ($(CONF),meso)
 	FFT_LINK = -L$(MKL_PATH) $(MKL_LIBS)
 
 	COF_FILE = cof_mkl 
-	SUPPORT_FILE = mkl_dfti mkl_lapack mkl_pardiso
+	SUPPORT_FILE = mkl_dfti mkl_lapack mkl_pardiso SolidSolver
 
 	FF = ifort
 endif

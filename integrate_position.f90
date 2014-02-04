@@ -1,5 +1,6 @@
 subroutine integrate_position (time, beam) !attention! parameter time added (for mouvement)
   use share_vars
+  use motion
 ! this function integrates the incoming beam(:,5) and beam(:,6) (angle and angle_dot) and returns the new positions
 ! in the same array
   implicit none

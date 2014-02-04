@@ -22,7 +22,7 @@ subroutine time_step
   real (kind=pr) :: T_lastsave, T_lastdrag
   real (kind=pr) :: time_dt, time_nst, time_solid, time_mask, time_pressure ! times for performance measurement
   character(len=17) :: namestring, timestring
-  logical :: file_existent, Colorscale_done = .false.
+  logical :: file_existent
   type(solid),dimension(1:iBeam) :: beams
 
   
@@ -88,8 +88,8 @@ subroutine time_step
   ! vorticity sponge
   !---------------------------------------------------------------- 
   call create_sponge_mask() !contains saving the field  
-  if ((iSponge>0).and.(iSponge<4)) call SaveGIF(mask_sponge, trim(dir_name)//'/'//trim(simulation_name)//"mask_sponge", 13, minval(mask_sponge), maxval(mask_sponge))
-  
+!   if ((iSponge>0).and.(iSponge<4)) call SaveGIF(mask_sponge, trim(dir_name)//'/'//trim(simulation_name)//"mask_sponge", 13, minval(mask_sponge), maxval(mask_sponge))
+  call SaveGIF(mask_sponge, trim(dir_name)//'/'//trim(simulation_name)//"mask_sponge", 13, minval(mask_sponge), maxval(mask_sponge))
   !----------------------------------------------------------------
   ! compute true mean speed for channels
   !----------------------------------------------------------------
@@ -98,6 +98,7 @@ subroutine time_step
     U_mean_true=1.0-2.0*h_channel/yl
     write (*,*) "--- True mean speed:", U_mean_true
   endif
+
   
   !---------------------------------------------------------
   ! Save initial values (fields)
@@ -120,7 +121,7 @@ subroutine time_step
       !------------------------------------------------------------------------------------------------------------------
       ! step one: create_mask. nessesairy if the beam moves and if there is a velocity sponge with time-dependend mean velocity
       !------------------------------------------------------------------------------------------------------------------
-      if (((iSponge==4).and.(time<T_fullspeed)).or.(iFLUSI==1).or.(iMotion>0)) call create_mask( time, beams )
+      if (((iSponge>=4).and.(time<T_fullspeed)).or.(iFLUSI==1).or.(iMotion>0)) call create_mask( time, beams )
       !--------------------------------------------------------------------------------------------------------------------
       ! step two: solve navier-stokes (always)
       !--------------------------------------------------------------------------------------------------------------------
@@ -183,7 +184,7 @@ subroutine time_step
 	! step one: create_mask. nessesairy if the beam moves and if there is a velocity sponge with time-dependend mean velocity
 	!------------------------------------------------------------------------------------------------------------------	    
 	time_mask = performance("start",2)
-	if (((iSponge==4).and.(time<T_fullspeed)).or.(iFLUSI==1).or.(iMotion>0)) call create_mask( time, beams )
+	if (((iSponge>=4).and.(time<T_fullspeed)).or.(iFLUSI==1).or.(iMotion>0)) call create_mask( time, beams )
 	time_mask = performance("stop",2)
 	!--------------------------------------------------------------------------------------------------------------------
 	! step two: solve navier-stokes (always)
@@ -256,7 +257,7 @@ subroutine time_step
 	    call cofitxy (vortk(:,:,n1), vort)
 	    
 	    ! remove vorticity from inside the solid, making the video nicer to watch
-	    where (mask*eps>0.5)
+	    where ((mask*eps>0.5) .and. (mask_frame==0.0))
 	      vort = 0.0
 	    end where
 
@@ -269,18 +270,19 @@ subroutine time_step
 
 	    if (((time<T_fullspeed+6.0*tdrag).or.(Colorscale_done==.false.)).or.(inicond==22)) then ! the color scaling shouldnt alter after T_fullspeed+6*0.05 (sixth snapshot after fullspeed)
 	      colorscale=0.25*max(maxval(vort),abs(minval(vort)))
-	      pmin = minval(press)
-	      pmax = maxval(press)
 	      Colorscale_done = .true.
 	    endif
-	    
+
+!             pmin = minval(press)
+!             pmax = maxval(press)
+            
 	    colorscale = max(colorscale, 0.10*max(maxval(vort),abs(minval(vort))) )
 	    write (*,'("time=",es12.4," color=",es12.4)') time, colorscale 
 	    ! with fixed scaling
 	    call SaveGIF(vort, trim(dir_name)//"/vor/"//trim(namestring)//"_T="//trim(timestring)//".vor", 1, -colorscale, colorscale)
-	    call SaveGIF(press, trim(dir_name)//"/press/"//trim(namestring)//"_T="//trim(timestring)//".press", 14, pmin, pmax)
-	    call SaveGIF(mask, trim(dir_name)//"/mask/"//trim(namestring)//"_T="//trim(timestring)//".mask", 13, 0.0, 1.0/eps)
-      
+! 	    call SaveGIF(press, trim(dir_name)//"/press/"//trim(namestring)//"_T="//trim(timestring)//".press", 14, pmin, pmax)
+! 	    call SaveGIF(mask, trim(dir_name)//"/mask/"//trim(namestring)//"_T="//trim(timestring)//".mask", 13, 0.0, 1.0/eps)
+!           call SaveGIF(u(:,:,1), trim(dir_name)//"/mask/"//trim(namestring)//"_T="//trim(timestring)//".ux",3)
 	    ivideo=ivideo+1
 	    T_lastdrag=time
 
@@ -325,12 +327,8 @@ subroutine time_step
           elseif (iStop == 33) then
             call ReLoadParams
             call ReWriteStopFile
-          elseif (iStop == 666) then
-            call ReWriteStopFile
-            ! abort this run (when doing multires) and got to the next
-            write (*,*) " !!! interuption command, stopping this run now. whatever."
-            continue_timestep=.false.
           elseif (iStop == 55) then
+            write (*,*) "Fetched command 55 - save fields now. Doing so right now. "
             call save_fields (n1, time, dt1, vortk, nlk, workvis, nbackup, ivideo, u, press, beams)
             call ReWriteStopFile
           endif
@@ -353,7 +351,7 @@ subroutine time_step
 
   open (10, file=trim(simulation_name)//"inicond", form='unformatted', status='replace')
   ! note "press" is vor in physical space
-  write (10) nx, ny, press!, beam
+  write (10) nx, ny, press
   close (10)
   
 end subroutine time_step

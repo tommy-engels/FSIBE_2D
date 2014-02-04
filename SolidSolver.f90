@@ -1,5 +1,6 @@
 module SolidSolver
 use share_vars
+use motion
 implicit none
 
 ! here we could define some variables
@@ -57,6 +58,8 @@ subroutine InitializeSolidSolver( beams )
   type(solid), dimension(1:iBeam), intent (inout) :: beams
   
   ! marks all beams to be in the very first time step  
+  ! the solver then uses CN2 instead of BDF2, because the old old time level
+  ! t_n-1 is not available
   do i=1,iBeam
     beams(i)%StartupStep = .true.
   enddo
@@ -73,7 +76,6 @@ end subroutine InitializeSolidSolver
 subroutine SolidEnergies( beam )
   use share_vars
   implicit none
-  integer :: i
   type(solid), intent (inout) :: beam
   real (kind=pr), dimension (0:ns-1) :: theta_s
   
@@ -81,13 +83,13 @@ subroutine SolidEnergies( beam )
   call Differentiate1D ( beam%theta, theta_s, ns, ds, 1)  
   
   beam%E_kinetic = mue*0.5d0*ds*sum( beam%vx**2 + beam%vy**2 )
-  beam%E_pot     = mue*grav*ds *sum(beam%y-beam%y0)
-  beam%E_elastic = eta*0.5d0*ds*sum(theta_s**2)
+  beam%E_pot     = mue*grav*ds *sum( beam%y-beam%y0 )
+  beam%E_elastic = eta*0.5d0*ds*sum( theta_s**2 )
+  
+  beam%Inertial_Force(1) = mue*ds* sum( beam%ax ) 
+  beam%Inertial_Force(2) = mue*ds* sum( beam%ay ) 
   
 end subroutine SolidEnergies
-
-
-
 
 
 
@@ -106,34 +108,28 @@ subroutine IBES_solver ( time, dt, beam_solid )! note this is actuall only ONE b
   implicit none
   real (kind=pr), intent (in) :: 				dt, time
   type (solid), intent(inout) ::                                beam_solid
-  real (kind=pr), dimension (0:ns-1) ::				T, T_s, theta_s, theta_ss, theta_sss, theta
+  real (kind=pr), dimension (0:ns-1) ::				T
   real (kind=pr), dimension (0:ns-1) ::				old_rhs, theta_old,T_dummy
   real (kind=pr), dimension (0:ns-1) ::	    	                pressure_old, pressure_new, tau_beam_old, tau_beam_new
   real (kind=pr), dimension (0:ns-1, 1:6) :: 	                beam
   real (kind=pr), dimension (-1:ns+1) :: 			theta_guess
   real (kind=pr), dimension (-1:ns-1) :: 			T_guess
-  real (kind=pr), dimension (0:ns-1, 1:6) :: 			beam_old, beam_guess, beam_temp
+  real (kind=pr), dimension (0:ns-1, 1:6) :: 			beam_old, beam_guess
   real (kind=pr), dimension (0:ns-1, 1:6) :: 	                beam_oldold
-  real (kind=pr), dimension (1:2*ns+4) :: 			x_guess, x, x_delta, F,F2
-  real (kind=pr), dimension (1:2*ns+4,1:2*ns+4)  :: 		J,J2, J2_norm, work
+  real (kind=pr), dimension (1:2*ns+4) :: 			x_guess, x, x_delta, F
+  real (kind=pr), dimension (1:2*ns+4,1:2*ns+4)  :: 		J,J2, J2_norm
   real (kind=pr), dimension (1:ns+3) :: 			theta_act
   real (kind=pr), dimension (1:ns+1) :: 			T_act
-  real (kind=pr) :: 						alpha, alpha_t, alpha_tt, dt_beam, err, A1, A2, dxx, K1, K2, T_s0, theta_ss0, theta_s0, C2,C1,C3,C4
-  real (kind=pr) :: 						forward_error, backward_error, err_rel, R
+  real (kind=pr) :: 						alpha, alpha_t, alpha_tt, err, A1, A2, K1, K2, T_s0, theta_ss0, theta_s0, C2,C1,C3,C4
+  real (kind=pr) :: 						err_rel, R
   real (kind=pr) ::					        dt_old
-  real (kind=pr), allocatable, dimension(:) :: 			values, values1
   real (kind=pr), parameter ::					error_stop = 1.0e-7
-  integer :: 							n,i,steps,N_nonzero,h,k,newrow,error,iter, N_average, ipiv(1:2*ns+4), iwork(1:2*ns+4)
-  integer, allocatable, dimension(:) :: 			columns, rows
+  integer :: 							n,N_nonzero,k,iter
   integer, save ::						iCalls=10
-  integer, dimension(1:6) :: 					job
-  integer, dimension(2*ns+4) :: 				perm
-  integer, dimension(64) :: 					iparams
-  TYPE(MKL_PARDISO_HANDLE) :: 					PT(64)  
   logical :: 							ActuallyBDF2=.false., iterate=.true.
   real (kind=pr), dimension(1:6) :: 				LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
 
-  !*******************************************************
+  !******************************************************* 
   ! NOTE: 2013, this is extended to take more than one beam into account.
   ! however, its too hard to reprogram everything, so now
   ! we force it to be compatible
@@ -181,7 +177,7 @@ subroutine IBES_solver ( time, dt, beam_solid )! note this is actuall only ONE b
   K2 = pressure_new(0) + mue*(LeadingEdge(6)*cos(alpha)-LeadingEdge(5)*sin(alpha)+grav*cos(alpha))
   C2 = 2.0*ds*K2 - T(0)*theta_guess(1) + (eta/ds**2)*(10.0*theta_guess(0)-12.0*theta_guess(1)+6.0*theta_guess(2)-theta_guess(3) )
   !-- theta_extended(0) is the first virtual node. 
-  theta_guess(-1) 	 = C2 / ( (3.0*eta/ds**2)-T(0) )
+  theta_guess(-1) = C2 / ( (3.0*eta/ds**2)-T(0) )
   !-- solve last two boundary conditions: theta_s(ns-1) = theta_ss(ns-1) = 0
   A1 = beam_guess(ns-3,5)/12. - 2.*beam_guess(ns-2,5)/3.
   A2 =-beam_guess(ns-3,5)/12. + 4.*beam_guess(ns-2,5)/3. - 5.*beam_guess(ns-1,5)/2.
@@ -214,39 +210,33 @@ subroutine IBES_solver ( time, dt, beam_solid )! note this is actuall only ONE b
     old_rhs = beam_old(:,6)           
     call RHS_beameqn(time, theta_old, old_rhs, pressure_old, T_dummy, tau_beam_old, beam_solid)
   endif  
-
   !--------------------------------------------------------------------
   ! 	Newton iteration
   !--------------------------------------------------------------------
   err     = 1.0
   err_rel = 1.0
-  allocate(rows(1:2*ns+5))	!rows for the CSR format has a fixed dimension
+  
   x = x_guess
-  
-  
-  
+    
   iter = 0
   
   ! MODIFICATION 31.10.2012: the iteration now uses both relative and absolute error. If x is large, we can have trouble
   ! reaching a very small increment, and iterate forever. If x is small, then the relative criterion tries to go much below
   ! machine precision. So we use both, either with the same precision.
   iterate = .true.
-  do while (iterate==.true.)!
+  do while (iterate==.true.)
     theta_act = x(1:ns+3)
     T_act     = x(ns+4:2*ns+4)
     !-------------------------------------------------------------------------
     !	Calculate RHS vector
     !-------------------------------------------------------------------------
     call F_nonlinear( time, dt, dt_old, F, beam_old(:,5), beam_old(:,6), theta_act, T_act, pressure_new, old_rhs, beam_oldold(:,5), beam_oldold(:,6), tau_beam_new, beam_solid)
+    F = -1.0*F !newton raphson is J*dx = -F
 
     !-------------------------------------------------------------------------
     !	Create Jacobi Matrix and Compress it to the sparse format.
     !-------------------------------------------------------------------------    
     call Jacobi(time, dt, dt_old, J, N_nonzero , T_act, theta_act, beam_old(:,5), beam_old(:,6), pressure_new, beam_oldold(:,5), beam_oldold(:,6), tau_beam_new, beam_solid)
-
-    !------Compress the Jacobian into CSR (Compressed sparse row) format
-    allocate(values(1:N_nonzero), columns(1:N_nonzero))
-    call CompressMatrix(J, values, columns, rows) 
 
     !-------------------------------------------------------------------------
     !	self-test. occasionally, check if Jacobian is okay
@@ -282,67 +272,35 @@ subroutine IBES_solver ( time, dt, beam_solid )! note this is actuall only ONE b
 	endif
 	iCalls = 0
     endif
-          
-    !--------------------------------------------------------------------
-    ! 		solve linear system using PARDISO
-    !--------------------------------------------------------------------
     
-    perm = 0  
-    iparams = 0   !use standard parameters for pardiso
-    iparams(1)=1  !don't use std parameters, specified below
-    iparams(2)=3  !0 minum degree 2 nestes METIS 3 OPENMP
-    iparams(3)=omp_get_num_threads()  !mkl_get_max_threads() ! number of threads
-    iparams(4)=0
-    iparams(5)=0
-    iparams(6)=0
-    iparams(8)=0
-    iparams(10)=13
-    iparams(11)=1
-    iparams(13)=1
-    iparams(18)=0
-    iparams(19)=0
-    iparams(21)=1
-    iparams(27)=1
-    iparams(28)=0
-    iparams(35)=0
-    iparams(60)=0 ! in core o/ outofcore(2)
-    
-    pt%dummy = 0	!pardiso internal adresses
-    x_delta = 0.0
-    F = -1.0*F 		!newton raphson is J*dx = -F
-    
-    call pardiso( pt, 1, 1, 11, 13, 2*ns+4, values, rows, columns, perm, 1, iparams, 0, F, x_delta, error)
-!    call pardiso(pt, maxfct, mnum, type, phase, n, a, ia, ja, perm, nrhs, iparm, msglvl, b, x, error)
 
-    if (error .ne. 0) then
-      write(*,*) "!!! Crutial: PARDISO error.", error
-      stop 
-    endif
-        
-    !release pardiso internal memory
-    call pardiso( pt, 1, 1, 11, -1, 2*ns+4, values, rows, columns, perm, 1, iparams, 0, F, x_delta, error)
-    deallocate (values, columns)
-     
-    iter = iter + 1	!count iterations     
-      
-    x= x + x_delta    
-    err = sqrt(sum(x_delta**2))
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! SOLVE LINEAR SYSTEM
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    call Solve_LGS ( J, F, x_delta, N_nonzero, "DIRECT")
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+    iter    = iter + 1
+    x       = x + x_delta    
+    err     = sqrt(sum(x_delta**2))
     err_rel = abs(sqrt(sum(x_delta**2)) / sqrt(sum(x**2)))
-    
-    
-    ! relative error criterion
+
+    !-----------------------------------------------------------
+    ! CONVERGENCE CRITERION
+    !-----------------------------------------------------------
     if ( (((err<error_stop) .or. (err_rel<error_stop)).and.(iter>2))) then ! absolute error criterion
       iterate = .false.
     endif
     
+    !-----------------------------------------------------------
+    ! EMERGENCY BRAKE
+    !-----------------------------------------------------------
     if (iter>49) then
       write(*,*) "!!! ERROR: IBES performed like 500 iterations. this is not normal."
       stop
     endif
     
   enddo
-  deallocate(rows)	!release memory
-
 
   
   !--------------------------------------------------------------------
@@ -399,6 +357,14 @@ subroutine IBES_solver ( time, dt, beam_solid )! note this is actuall only ONE b
   call integrate_position ( time+dt, beam_solid )
   
   !---------------------------------------------------------------------
+  !  accelerations
+  !---------------------------------------------------------------------  
+  ! we have the old velocity (t_n) and the new one 
+  beam_solid%ax = (beam_solid%vx - beam_old(:,3)) / dt
+  beam_solid%ay = (beam_solid%vy - beam_old(:,4)) / dt
+  
+  
+  !---------------------------------------------------------------------
   !     	emergency brake
   !---------------------------------------------------------------------
   if (maxval(abs(beam(:,6)-beam_old(:,6) ))>100.0 ) then
@@ -447,6 +413,140 @@ subroutine IBES_solver ( time, dt, beam_solid )! note this is actuall only ONE b
 
 end subroutine IBES_solver
 
+
+
+
+
+
+subroutine Solve_LGS ( J, F, x, N_nonzero, solver)
+  !--------------------------------------------
+  ! solves the linear system J*x = F
+  !--------------------------------------------
+  use share_vars
+  use CompressMatrixCSR
+  use mkl_pardiso
+  use MKL_PARDISO_PRIVATE
+  use mkl95_lapack  
+  use mkl95_precision
+  use omp_lib
+  implicit none
+  real (kind=pr), dimension (1:2*ns+4,1:2*ns+4), intent(in) :: J
+  real (kind=pr), dimension (1:2*ns+4), intent(out) :: x
+  real (kind=pr), dimension (1:2*ns+4), intent(out) :: F
+  character(len=*), intent(in) :: solver
+  integer, intent(in) :: N_nonzero
+  
+  real (kind=pr), allocatable, dimension(:) :: values
+  integer, allocatable, dimension(:) :: columns, rows
+  integer, dimension(2*ns+4) :: perm
+  integer, dimension(64) :: iparams
+  integer :: error, ipiv(1:2*ns+4), i
+  type (MKL_PARDISO_HANDLE) :: PT(64) 
+  
+  real (kind=pr), dimension (1:2*ns+4,1:2*ns+4) :: J2
+  real (kind=pr), dimension (1:2*ns+4) :: F2
+  
+  x = 0.0
+  
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  if (solver == "PARDISO") then
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  
+    !-----------------------------------------------------------------
+    !--Compress the Jacobian into CSR (Compressed sparse row) format
+    !-----------------------------------------------------------------
+    allocate( values(1:N_nonzero), columns(1:N_nonzero) )
+    allocate( rows(1:2*ns+5) ) !rows for the CSR format has a fixed dimension
+    call CompressMatrix(J, values, columns, rows)  
+    
+    !-----------------------------------------------------------------
+    ! initialize PARDISO
+    !-----------------------------------------------------------------    
+    !pardiso internal adresses
+    pt%dummy = 0 
+    perm = 0  
+    iparams = 0   !use standard parameters for pardiso
+    iparams(1)=1  !don't use std parameters, specified below
+    iparams(2)=3  !0 minum degree 2 nestes METIS 3 OPENMP
+    iparams(3)=omp_get_num_threads()  !mkl_get_max_threads() ! number of threads
+    iparams(4)=0
+    iparams(5)=0
+    iparams(6)=0
+    iparams(8)=0
+    iparams(10)=13
+    iparams(11)=1
+    iparams(13)=1
+    iparams(18)=0
+    iparams(19)=0
+    iparams(21)=1
+    iparams(27)=1
+    iparams(28)=0
+    iparams(35)=0
+    iparams(60)=0 ! in core o/ outofcore(2)
+    
+    
+    !-----------------------------------------------------------------
+    ! SOLVE using PARDISO
+    !-----------------------------------------------------------------  
+    call pardiso( pt, 1, 1, 11, 13, 2*ns+4, values, rows, columns, perm, 1, iparams, 0, F, x, error)
+!   call pardiso(pt, maxfct, mnum, type, phase, n, a, ia, ja, perm, nrhs, iparm, msglvl, b, x, error)
+
+    if (error .ne. 0) then
+      write(*,*) "!!! Crutial: PARDISO error.", error
+      stop 
+    endif
+    
+    
+    !-----------------------------------------------------------------
+    ! CLEANUP
+    !-----------------------------------------------------------------      
+    !release pardiso internal memory
+    call pardiso( pt, 1, 1, 11, -1, 2*ns+4, values, rows, columns, perm, 1, iparams, 0, F, x, error)    
+    deallocate ( rows,values,columns )
+    
+    
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
+  elseif (solver == "DIRECT") then
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  
+    J2 = transpose(J)
+    F2 = F
+    call dgetrf( 2*ns+4, 2*ns+4, J2, 2*ns+4, ipiv, error )
+    if (error .ne. 0) then
+      write(*,*) "!!! Crutial: dgetrf error.", error
+      stop
+    endif
+    
+    
+    call dgetrs( 'N', 2*ns+4, 1, J2, 2*ns+4, ipiv, F2, 2*ns+4, error )
+    if (error .ne. 0) then 
+      write(*,*) "!!! Crutial: dgetrs error.", error
+      stop
+    endif
+    
+    x = F2
+    
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
+  else
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
+      write (*,*) "!!! linear solver: method unkown"
+      stop 
+  endif
+  
+  !!!!!!!!!!!!!!!!!!!!
+  ! check for NaN's
+  !!!!!!!!!!!!!!!!!!!!
+  do i = 1, 2*ns + 4
+  if (isnan(x(i))) then
+    write (*,*) "Solver: "//solver
+    write (*,*) "OhOh. Something went wrong in the Linear solver for the solid"
+    write (*,*) "May I suggest to kill yourself as you'll never find this mistake?"
+    stop
+  endif
+  enddo
+  
+end subroutine
+
 !##################################################################################################################################################################
 
 subroutine F_nonlinear (time, dt, dt_old,  F, theta_old, theta_dot_old, theta, T, p, old_rhs, theta_oldold, theta_dot_oldold, tau_beam, beam_solid  )
@@ -464,7 +564,7 @@ subroutine F_nonlinear (time, dt, dt_old,  F, theta_old, theta_dot_old, theta, T
   real (kind=pr) :: K1,K2, C1,C2, C3,C4,R
   real (kind=pr) :: alpha, alpha_t, alpha_tt 
   real (kind=pr), dimension(1:6) :: LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
-  integer :: i,k 
+  integer :: i
   
   call Differentiate1D (tau_beam, tau_s, ns, ds, 1)
   
@@ -494,6 +594,22 @@ subroutine F_nonlinear (time, dt, dt_old,  F, theta_old, theta_dot_old, theta, T
   endif
   
   theta_dot_new = (C1/dt) * ( theta(0:ns-1) - C3*theta_old(0:ns-1) - C4*theta_oldold ) - C2*theta_dot_old
+  
+  call Check_Vector_NAN ( theta_old, "theta_old" )
+  call Check_Vector_NAN ( theta_dot_old, "theta_dot_old" )
+  call Check_Vector_NAN ( theta, "theta" )
+  call Check_Vector_NAN ( T, "T" )
+  call Check_Vector_NAN ( p, "p" )
+  call Check_Vector_NAN ( old_rhs, "old_rhs" )
+  call Check_Vector_NAN ( theta_oldold, "theta_oldold" )
+  call Check_Vector_NAN ( theta_dot_oldold, "theta_dot_oldold" )
+  call Check_Vector_NAN ( tau_beam, "tau_beam" )
+  call Check_Vector_NAN ( theta_dot_new, "theta_dot_new" )
+  call Check_Vector_NAN ( tau_s, "tau_s" )
+  call Check_Vector_NAN ( theta_oldold, "theta_oldold" )
+  
+  
+  
   
   ! first we set the 8 special eqns at the beginning 
   F(1) = theta(0) 
@@ -532,16 +648,21 @@ subroutine F_nonlinear (time, dt, dt_old,  F, theta_old, theta_dot_old, theta, T
     - sigma*theta_dot_new(i) &
     + tau_beam(i)*(theta(i+1)-theta(i-1))/(2.0*ds)&
     + C2*mue*old_rhs(i))  !mue*RHS because in RHS_beameqn term is divided by MUE!!!!
-
    
     ! 2nd block: eqn's for T (ns+2 eqn's) [G]
     F( 8+(ns-2)+i ) = (T(i-1)-2.0*T(i)+T(i+1))/(ds**2) - T(i)*( (theta(i+1)-theta(i-1))/(2.0*ds) )**2 & !alles ok
     + p(i)*(theta(i+1)-theta(i-1))/(2.0*ds) &
     + eta*(theta(i+1)-theta(i-1))*(theta(i+2)-2.0*theta(i+1)+2.0*theta(i-1)-theta(i-2))/(2.0*ds**4) &
     + eta*( (theta(i+1)-2.0*theta(i)+theta(i-1))/(ds**2) )**2 &
-    + mue*( theta_dot_new(i) +alpha_t)**2 &
+    + mue*( theta_dot_new(i) + alpha_t )**2 &
     - tau_s(i)
+    
   enddo 
+
+  !------------------------------------------
+  ! check for NaN's
+  !------------------------------------------
+  call Check_Vector_NAN (F, "F_nonlinear")
 
 end subroutine F_nonlinear
 
@@ -558,7 +679,7 @@ subroutine Jacobi(time, dt, dt_old, J, N_nonzero , T, theta, theta_old, theta_do
   real (kind=pr), dimension(0:ns-1), intent (in) :: p, theta_old, theta_dot_old, theta_oldold, theta_dot_oldold, tau_beam
   real (kind=pr), dimension(0:ns-1) ::theta_dot_new
   integer, intent (out) :: N_nonzero
-  integer :: i, T0_index, k, l, m,n
+  integer :: i, T0_index, k, l, m
   real (kind=pr) :: alpha, alpha_t, alpha_tt, C1,C2,C3,C4,D,R
   real (kind=pr), dimension(1:6) :: LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
   
@@ -597,6 +718,20 @@ subroutine Jacobi(time, dt, dt_old, J, N_nonzero , T, theta, theta_old, theta_do
   endif
   D  = C1/dt ! this is the only entry in the jacobian for theta_dot_new
   theta_dot_new = (C1/dt) * ( theta(0:ns-1) - C3*theta_old(0:ns-1) - C4*theta_oldold ) - C2*theta_dot_old
+  
+  
+  call Check_Vector_NAN ( theta_old, "theta_old" )
+  call Check_Vector_NAN ( theta_dot_old, "theta_dot_old" )
+  call Check_Vector_NAN ( theta, "theta" )
+  call Check_Vector_NAN ( T, "T" )
+  call Check_Vector_NAN ( p, "p" )
+  call Check_Vector_NAN ( theta_oldold, "theta_oldold" )
+  call Check_Vector_NAN ( theta_dot_oldold, "theta_dot_oldold" )
+  call Check_Vector_NAN ( tau_beam, "tau_beam" )
+  call Check_Vector_NAN ( theta_dot_new, "theta_dot_new" )
+  call Check_Vector_NAN ( theta_oldold, "theta_oldold" )
+  
+  
  
   T0_index = ns+4 							!T0 means here the first T = T(-1)
   J = 0.0								! initialize J
@@ -705,13 +840,25 @@ subroutine Jacobi(time, dt, dt_old, J, N_nonzero , T, theta, theta_old, theta_do
     J( m+1,k) = 1.0/(ds**2) 
   enddo
   
-  !-- count nonzero elements
+  
   N_nonzero = 0
   do k = 1,2*ns+4
   do l = 1,2*ns+4
+    !-------------------------------
+    !-- count nonzero elements
+    !-------------------------------
     if (J(k,l).ne.0.0) N_nonzero=N_nonzero+1
+    !------------------------------------------
+    ! check for NaN's
+    !------------------------------------------
+    if (isnan(J(k,l))) then
+      write (*,*) "!!! !!! NaN in Jacobian..."
+      stop
+    endif  
   enddo
   enddo
+  
+  
   
 end subroutine Jacobi
 
@@ -785,16 +932,14 @@ subroutine RHS_beameqn (time, theta, theta_dot, pressure_beam, T, tau_beam, beam
     use mkl95_precision
     use share_vars
     implicit none
-    integer :: 							i, N, j
     real (kind=pr), intent (in) :: 				time
-    real (kind=pr) ::  						A1, A2, K1,K2,C1,C2
+    real (kind=pr) ::  						A1, A2, K2,C2
     real (kind=pr), dimension (0:ns-1), intent (in) :: 		pressure_beam, tau_beam
     real (kind=pr), dimension (0:ns-1), intent (out) :: 	T
     type(solid) :: beam_solid
     real (kind=pr), dimension (0:ns-1), intent (inout) :: 	theta, theta_dot
     real (kind=pr), dimension (0:ns+2) :: 			theta_extended, theta_extended_s, theta_extended_ss, theta_extended_sss, theta_extended_ssss
     real (kind=pr), dimension (0:ns-1) :: 			theta_s, theta_ss, theta_sss, theta_ssss, T_s, p_s
-    real (kind=pr), dimension (0:ns-2) :: 			ipiv !used only for the MKL lib
     real (kind=pr) :: 						alpha, alpha_t, alpha_tt
     real (kind=pr), dimension(1:6) :: 				LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
 
@@ -944,8 +1089,9 @@ subroutine Differentiate1D (f, f_derivative, N, dx, order)
   real, intent (in)    				:: dx
   real, dimension(0:N-1)			:: f, f_derivative
   real (kind=pr), dimension (0:N-1, 0:N-1) 	:: D1, D2, D3 ,D4
-  integer :: i,j,k
+  
   call create_diff_matrices (D1, D2, D3, D4, N, dx)
+  
   select case (order)
     case(1)
       f_derivative = matmul(D1,f)
@@ -1091,7 +1237,6 @@ end subroutine create_diff_matrices
 subroutine RK4 (time, dt_beam, beam, pressure_beam, T, tau_beam, beam_solid) 
 use share_vars
   implicit none
-  integer :: n , i
   real (kind=pr), intent (in) :: dt_beam, time
   real (kind=pr), dimension (0:ns-1, 1:6), intent (inout) :: beam
   real (kind=pr), dimension (0:ns-1, 1:6) :: beam_old
@@ -1099,7 +1244,7 @@ use share_vars
   type (solid) :: beam_solid
   real (kind=pr), dimension (0:ns-1), intent (inout) :: T
   real (kind=pr), dimension (0:ns-1) :: theta, theta_dot, T1, T2, T3, T4
-  real (kind=pr), dimension (0:ns-1) :: theta_1, theta_2, theta_3, theta_4, T_dummy
+  real (kind=pr), dimension (0:ns-1) :: theta_1, theta_2, theta_3, theta_4
   real (kind=pr), dimension (0:ns-1) :: theta_dot_1, theta_dot_2, theta_dot_3, theta_dot_4
   beam_old=beam
   theta = beam(:,5)
@@ -1164,7 +1309,6 @@ end subroutine RK4
 subroutine EE1 (time, dt_beam, beam, pressure_beam, T, tau_beam, beam_solid) 
 use share_vars
   implicit none
-  integer :: n , i
   real (kind=pr), intent (in) :: dt_beam, time
   real (kind=pr), dimension (0:ns-1, 1:6), intent (inout) :: beam
   real (kind=pr), dimension (0:ns-1), intent(out) :: T
@@ -1328,8 +1472,6 @@ subroutine Jacobi_num(time, dt,dt_old, J, N_nonzero , T, theta, theta_old, theta
   real (kind=pr), dimension(0:ns-1), intent (in) :: p, theta_old, theta_dot_old, theta_oldold,theta_dot_oldold, old_rhs, tau_beam_new
   integer, intent (out) :: N_nonzero
   integer :: i, k, l
-  real (kind=pr) :: alpha, alpha_t, alpha_tt, C1,C2,C3,C4
-  real (kind=pr), dimension(1:6) :: LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
 
   !---------------------------------------
   !	NUMERIC COMPUTATION OF THE JACOBIAN
@@ -1375,6 +1517,40 @@ subroutine Jacobi_num(time, dt,dt_old, J, N_nonzero , T, theta, theta_old, theta
   enddo
   
 end subroutine Jacobi_num
- 
+
+
+subroutine Check_Vector_NAN(f, msg)
+  use share_vars
+  real(kind=pr), intent(in) :: f(:)
+  character(len=*) :: msg
+  integer :: a, i
+  a = size(f)
+  do i=1,a
+    if (isnan(f(i))) then
+     write (*,*) "??? SOLID SOLVER: Found NaN in vector at", i
+     write (*,*) msg
+     stop
+     endif
+  enddo
+end subroutine
+
+subroutine Check_Vector_NAN_try_correct(f, msg)
+  use share_vars
+  real(kind=pr), intent(inout) :: f(:)
+  character(len=*) :: msg
+  integer :: a, i
+  a = size(f)
+  do i=1,a
+    if (isnan(f(i))) then
+     write (*,*) "??? SOLID SOLVER: Found NaN in vector at", i
+     write (*,*) msg
+     write (*,*) "I will try to correct this and proceed, with fingers crossed!"
+     f(i)=0.0
+     endif
+  enddo
+end subroutine
  
 end module
+
+
+

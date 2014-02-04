@@ -42,6 +42,7 @@ subroutine save_fields (n1, time, dt1, vortk, nlk, workvis, nbackup, ivideo, u, 
   if (iSaveVort > 0) then
   call cofitxy (vortk, vort)
   call SaveField( trim(dir_name)//'/fields/'//trim(simulation_name)//'vor_'//name, vort, iSaveVort, xl,yl,"vorticity")
+  call SaveField( trim(dir_name)//'/fields/'//trim(simulation_name)//'vor_mean_'//name, vor_mean, iSaveVort, xl,yl,"vorticity")
   endif
   !=================================================================================
   !save mask
@@ -121,7 +122,12 @@ subroutine MakeRuntimeBackup(n1, time, dt1, vortk, nlk, workvis, nbackup, ivideo
   write (name1, '(I1)') nbackup
   open (15, file = trim(dir_name)//'/runtime_backup'//name1//'.in', form='unformatted', status='replace')
   write (15) time
+  write (15) 123.0 ! checksum
   write (15) n1, dt1, vortk, nlk, workvis, mask, maskvx, maskvy, ivideo, u
+  
+  write (15) ns  
+  write (15) colorscale, colorscale_done
+  
   ! dump all beams to disk
   do i = 1, iBeam
     write (15) beams(i)%x, beams(i)%y, beams(i)%vx, beams(i)%vy, beams(i)%theta, beams(i)%theta_dot
@@ -129,7 +135,10 @@ subroutine MakeRuntimeBackup(n1, time, dt1, vortk, nlk, workvis, nbackup, ivideo
     write (15) beams(i)%Force, beams(i)%Force_unst, beams(i)%Force_press, beams(i)%E_kinetic, beams(i)%E_pot, beams(i)%E_elastic , beams(i)%x0, beams(i)%y0
     write (15) beams(i)%AngleBeam, beams(i)%iMouvement, beams(i)%drag_unst_new, beams(i)%drag_unst_old, beams(i)%lift_unst_new, beams(i)%lift_unst_old
     write (15) beams(i)%UnsteadyCorrectionsReady, beams(i)%dt_old, beams(i)%beam_oldold
+    write (15) beams(i)%ax, beams(i)%ay, beams(i)%Inertial_Force
   enddo
+  
+  write (15) vor_mean
   
   close (15)
   nbackup = 1 - nbackup

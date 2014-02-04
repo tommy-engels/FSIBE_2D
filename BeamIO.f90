@@ -6,6 +6,7 @@
 
 subroutine InitBeamFiles()
   use share_vars
+  use motion
   implicit none
   character(len=1) :: beamstr
   integer :: i
@@ -50,7 +51,7 @@ subroutine InitBeamFiles()
         open (14, file = trim(dir_name)//'/'//trim(simulation_name)//'beam_data'//beamstr, status = 'replace')
         call WriteHeaderToFile(14)
         write (14,'(A)') "%  beam data file, all quantities for the end point "
-        write (14,'(A)') "%         time   pressure(ns-1)  pressure(3ns/4) pressure(ns/2)  x-coordinate    y-coordinate    x-velocity      y-velocity      theta           theta_dot       drag            lift            drag_unst       lift_unst       F_press_x       F_press_y       E_kin_solid     E_elastic_sol   E_potential   "
+        write (14,'(A)') "%         time   pressure(ns-1)  pressure(3ns/4) pressure(ns/2)  x-coordinate    y-coordinate    x-velocity      y-velocity      theta           theta_dot       drag            lift            drag_unst       lift_unst       F_press_x       F_press_y       F_INERT_x       F_INERT_y       E_kin_solid     E_elastic_sol   E_potential   "
         close (14)      
         open  (14, file = trim(dir_name)//'/'//trim(simulation_name)//'beam_complete'//beamstr, status = 'replace')
         call WriteHeaderToFile(14)
@@ -99,6 +100,7 @@ end subroutine InitBeamFiles
 subroutine SaveBeamData( time, beams, dt1 )
   use share_vars
   use SolidSolver
+  use motion
   implicit none
   real (kind=pr), intent (in) :: time,dt1
   type (solid), dimension(1:iBeam), intent (in) :: beams
@@ -153,7 +155,7 @@ subroutine SaveBeamData( time, beams, dt1 )
       close (14) 
       
       open  (14, file = trim(dir_name)//'/'//trim(simulation_name)//'beam_data'//beamstr, status = 'unknown', access = 'append')
-      write (14, '(19(es15.8,1x))') &
+      write (14, '(21(es15.8,1x))') &
         time,&
         beams(i)%pressure_new(ns-1),&
         beams(i)%pressure_new(3*ns/4),&
@@ -170,6 +172,8 @@ subroutine SaveBeamData( time, beams, dt1 )
         beams(i)%Force_unst(2),&
         beams(i)%Force_press(1),&
         beams(i)%Force_press(2),&
+        beams(i)%Inertial_Force(1),&
+        beams(i)%Inertial_Force(2),&        
         beams(i)%E_kinetic,&
         beams(i)%E_elastic,&
         beams(i)%E_pot
@@ -187,7 +191,7 @@ subroutine SaveBeamData( time, beams, dt1 )
       ! for naming files..
       write (beamstr,'(i1)') i        
       open  (14, file = trim(dir_name)//'/'//trim(simulation_name)//'beam_data'//beamstr, status = 'unknown', access = 'append')
-      write (14, '(19(es15.8,1x))') &
+      write (14, '(21(es15.8,1x))') &
         time,&
         beams(i)%pressure_new(ns-1),&
         beams(i)%pressure_new(3*ns/4),&
@@ -204,6 +208,8 @@ subroutine SaveBeamData( time, beams, dt1 )
         beams(i)%Force_unst(2),&
         beams(i)%Force_press(1),&
         beams(i)%Force_press(2),&
+        beams(i)%Inertial_Force(1),&
+        beams(i)%Inertial_Force(2),&        
         beams(i)%E_kinetic,&
         beams(i)%E_elastic,&
         beams(i)%E_pot

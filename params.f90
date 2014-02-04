@@ -55,15 +55,13 @@ subroutine params ()
    stop
   endif 
   read *, eps
+  read *, eps_sponge
   read *, iMeanVelocity
   read *, T_fullspeed
   read *, theta_inf
   read *, idealis
   read *, iSponge
   read *, iSpongeType
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  eps_sponge=eps
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   read *, dummy !----------------
   read *, inicond
   read *, iMultiRes
@@ -162,9 +160,9 @@ subroutine params ()
   endif
 
   
-  if (checksum .ne. 707.) then
+  if (checksum .ne. 884.) then
    call DisplayError
-   write(*,*) "!!! bad params-file! the checksum number should be 707"
+   write(*,*) "!!! bad params-file! the checksum number should be 884"
    stop
   endif
   theta_inf = theta_inf * pi/180.0 
@@ -242,17 +240,21 @@ subroutine ReLoadParams
   read (10,*) mue
   read (10,*) T_release 	!time to begin the release-process for the beam  
   read (10,*) tau 	! duration for the soft-startup. during TAU, couppling is set from 0 to 1 by a second degree polynome.
-  read (10,*) dummy !iFSI
-  read (10,*) dummy !AngleBeam
+  read (10,*) AngleBeam !AngleBeam
   read (10,*) grav
   read (10,*) iImpulse
   read (10,*) sigma
-  read (10,*) dummy
+  read (10,*) dummy !TimeMethodSolid
+  read (10,*) dummy !----------------
+  read (10,*) dummy !iFLUSI
+  read (10,*) dummy !iMotion
+  read (10,*) dummy !iViscous
   read (10,*) dummy !----------------
   read (10,*) dummy !iCylinder
   read (10,*) dummy !iWalls
   read (10,*) dummy !iBeam
-  read (10,*) dummy !----------------
+  read (10,*) dummy !iSharpTrailing
+  read (10,*) dummy !----------------  
   read (10,*) tsave
   read (10,*) tdrag
   read (10,*) iSavePress
@@ -265,24 +267,16 @@ subroutine ReLoadParams
   read (10,*) iSaveBeam
   read (10,*) dummy !----------------
   read (10,*) nu
-  nu=1.d0/nu
-  if (nu>1.0) then
-   write (*,'(A)') "Oh Oh. nu>1.0. Probably you work with an old PARAMS.m file, in this version, please set the REYNOLDS number here"
-   write (*,'(A)') "so instead of nu=1e-2 set nu=100. its easier like this."
-   stop
-  endif 
-  
   read (10,*) eps
+  read (10,*) eps_sponge
   read (10,*) dummy !iMeanVelocity
   read (10,*) T_fullspeed
-  read (10,*) dummy !theta_inf
+  read (10,*) theta_inf
   read (10,*) idealis
   read (10,*) dummy !iSponge
   read (10,*) dummy !iSpongeType
-  eps_sponge=eps
   read (10,*) dummy !----------------
   read (10,*) dummy !inicond
-  read (10,*) dummy !iIteration
   read (10,*) dummy !iMultiRes
   read (10,*) dummy !----------------
   read (10,*) dummy !xl

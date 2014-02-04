@@ -185,6 +185,11 @@ subroutine StartSimulation()
   allocate ( maskvx(0:nx-1,0:ny-1) )
   allocate ( maskvy(0:nx-1,0:ny-1) )
   allocate ( mask_sponge(0:nx-1,0:ny-1) )
+  allocate ( mask_frame(0:nx-1,0:ny-1), vor_mean(0:nx-1,0:ny-1) )
+  
+  mask_frame = 0.0
+  vor_mean = 0.0
+  
   write (*,*) "*** information: allocated memory"
 
 ! Initialize fft
@@ -196,7 +201,7 @@ subroutine StartSimulation()
 ! Step forward in time
   write (*,*) "*** information: entering time_step"
   call time_step  !after time_step, the last vort field is saved in mask_sponge
-  deallocate (dealiase, mask_sponge, maskvx, maskvy, Params_Header, mask) ! its important to free all these fields so the solver won't be confused
+  deallocate (dealiase, mask_sponge, maskvx, maskvy, Params_Header, mask, mask_frame, vor_mean) ! its important to free all these fields so the solver won't be confused
   call fft_free        
 
 end subroutine StartSimulation

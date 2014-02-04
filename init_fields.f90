@@ -12,7 +12,7 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beams, ivideo, u )
   type (solid), intent(inout), dimension(1:iBeam) :: beams
   integer, intent (out) :: ivideo
   real (kind=pr) :: time1
-  real (kind=pr) :: x, y
+  real (kind=pr) :: x, y, checksum
   real (kind=pr) :: x1v, x2v, x3v,r0,we,d,r1,r2
   real (kind=pr) :: y1v, y2v, y3v
   real (kind=pr) :: a1, a2, a3
@@ -50,12 +50,23 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beams, ivideo, u )
         if (time1 > time) then
           time = time1
           write (*,*)'last record in runtime_backup'//name1//'.in', ' is at time = ', time
+          
+          read (15) checksum
+          if (checksum .ne. 123.0) then
+            write (*,*) "error, checksum in backup file wrong."
+            stop
+          endif
           read (15) n1, dt1, vortk, nlk, workvis, mask, maskvx, maskvy, ivideo, u
+          
+          
+          
           read (15) ns_file
           if (ns .ne. ns_file) then
             write(*,*) "ns not the same in backup and params file!"
             stop
           endif
+          
+          read (15) colorscale, colorscale_done
           
           ! read in all the beams
           do i = 1, iBeam
@@ -64,8 +75,12 @@ subroutine init_fields (n1, time, dt1, vortk, nlk, workvis, beams, ivideo, u )
             read (15) beams(i)%Force, beams(i)%Force_unst, beams(i)%Force_press, beams(i)%E_kinetic, beams(i)%E_pot, beams(i)%E_elastic , beams(i)%x0, beams(i)%y0
             read (15) beams(i)%AngleBeam, beams(i)%iMouvement, beams(i)%drag_unst_new, beams(i)%drag_unst_old, beams(i)%lift_unst_new, beams(i)%lift_unst_old
             read (15) beams(i)%UnsteadyCorrectionsReady, beams(i)%dt_old, beams(i)%beam_oldold
+            read (15) beams(i)%ax, beams(i)%ay, beams(i)%Inertial_Force
           enddo
         endif
+        
+        read (15) vor_mean
+!         vor_mean = 0.0
       close (15)
       100 enddo
       
@@ -204,7 +219,7 @@ elseif (inicond==22) then
       do ix=0,nx-1
       do iy=0,ny-1
         call random_number(w1)
-        vort(ix,iy) = 10.0*w1
+        vort(ix,iy) = 300.0*w1
       enddo
       enddo
       call SaveGif(vort,"vort_init")
@@ -215,26 +230,61 @@ elseif (inicond==22) then
       call SaveGif(u(:,:,1),"ux_init")
       ivideo=1 ! counter for the snapshots         
 elseif (inicond == 55 ) then
-    x0 = 0.5*xl
-    y0 = 0.5*yl
-    r0 = 0.1
-    we = 299.528385375226
-    d = 0.1
-    
-    do ix=0,nx-1
-    do iy=0,ny-1
-       r1 = sqrt( (real(ix)*dx-x0)**2 + (real(iy)*dy-y0-d)**2 ) / r0
-       r2 = sqrt( (real(ix)*dx-x0)**2 + (real(iy)*dy-y0+d)**2 ) / r0
-      vort(ix,iy) = we * (1.0-r1**2)*exp(-r1**2) - we * (1.0-r2**2)*exp(-r2**2)
-    enddo
-    enddo
-    
-    call SaveGIF(vort,'inicond.vor')
-    call coftxy (vort, vortk)
-    call cal_velocity(0.0, vortk, u, work1 )
-    call SaveGIF(u(:,:,0),'inicond.ux')
-    call SaveGIF(u(:,:,1),'inicond.uy')
-    ivideo = 1
+      !------------------------------------------------
+      ! dipole-walls
+      !------------------------------------------------
+      x0 = 0.5*xl
+      y0 = 0.5*yl
+      r0 = 0.1
+      we = 299.528385375226
+      d = 0.1
+      
+      do ix=0,nx-1
+      do iy=0,ny-1
+        
+        ! straight dipole
+        x = real(ix)*dx
+        y = real(iy)*dy
+      
+        r1 = sqrt( (x-x0)**2 + (y-y0-d)**2 ) / r0
+        r2 = sqrt( (x-x0)**2 + (y-y0+d)**2 ) / r0
+        vort(ix,iy) = we * (1.0-r1**2)*exp(-r1**2) - we * (1.0-r2**2)*exp(-r2**2)
+      enddo
+      enddo
+      
+      call SaveGIF(vort,'inicond.vor')
+      call coftxy (vort, vortk)
+      call cal_velocity(0.0, vortk, u, work1 )
+      call SaveGIF(u(:,:,0),'inicond.ux')
+      call SaveGIF(u(:,:,1),'inicond.uy')
+      ivideo = 1
+elseif (inicond == 56 ) then
+      !------------------------------------------------
+      ! dipole-walls (obighque
+      !------------------------------------------------
+      x0 = 0.5*xl
+      y0 = 0.5*yl
+      r0 = 0.1
+      we = 299.528385375226
+      d = 0.1
+      
+      do ix=0,nx-1
+      do iy=0,ny-1
+        x = cos(theta_inf) * (real(ix)*dx-x0) - sin(theta_inf) * (real(iy)*dy-y0)
+        y = sin(theta_inf) * (real(ix)*dx-x0) + cos(theta_inf) * (real(iy)*dy-y0)
+      
+        r1 = sqrt( x**2 + (y-d)**2 ) / r0
+        r2 = sqrt( x**2 + (y+d)**2 ) / r0
+        vort(ix,iy) = we * (1.0-r1**2)*exp(-r1**2) - we * (1.0-r2**2)*exp(-r2**2)
+      enddo
+      enddo
+      
+      call SaveGIF(vort,'inicond.vor')
+      call coftxy (vort, vortk)
+      call cal_velocity(0.0, vortk, u, work1 )
+      call SaveGIF(u(:,:,0),'inicond.ux')
+      call SaveGIF(u(:,:,1),'inicond.uy')
+      ivideo = 1      
   else
       write (*,'(A)') '!!! Error: Invalid initial condition (inicond)'
   endif

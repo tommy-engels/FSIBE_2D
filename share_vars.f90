@@ -17,7 +17,7 @@ module share_vars
 
   real (kind=pr), save :: cfl, nu, eps, pi, scalex, scaley, length, xl, yl, eta, mue, t_beam, N_smooth, h_channel, AngleBeam
   real (kind=pr), save :: U_mean_true, theta_inf, ds, T_release, tau, dt_fixed, sigma, R_cylinder, Time_end, SpongeSize, T_fullspeed
-  real (kind=pr), dimension (:,:), allocatable, save :: dealiase, mask, maskvx, maskvy, mask_sponge
+  real (kind=pr), dimension (:,:), allocatable, save :: dealiase, mask, maskvx, maskvy, mask_sponge, mask_frame, vor_mean
   real (kind=pr), save :: x0, y0, grav, eps_sponge, tdrag, tsave  
   
   
@@ -25,7 +25,7 @@ module share_vars
   real (kind=pr), dimension(1:2,0:1), save :: fmean
   
   real (kind=pr), save :: colorscale = 0.0 ! scaling for farge palette (vorticity)
- 
+  logical, save :: Colorscale_done = .false.
   ! ----------------------------------------------
   ! mask parameter
   ! ----------------------------------------------
@@ -48,10 +48,10 @@ module share_vars
   ! Solid datatype
   ! ----------------------------------------------
   type Solid
-    real(kind=pr), dimension (:), allocatable :: x,y,vx,vy, theta, theta_dot
+    real(kind=pr), dimension (:), allocatable :: x,y,vx,vy, theta,theta_dot,ax,ay
     real(kind=pr), dimension (:), allocatable :: pressure_old, pressure_new, tau_old, tau_new
     real(kind=pr), dimension(:,:), allocatable :: beam_oldold
-    real(kind=pr), dimension(1:2) :: Force, Force_unst, Force_press
+    real(kind=pr), dimension(1:2) :: Force, Force_unst, Force_press, Inertial_Force
     real(kind=pr) :: E_kinetic, E_pot, E_elastic
     real(kind=pr) :: x0, y0, AngleBeam, phase
     ! we need the previous time step for the BDF solver

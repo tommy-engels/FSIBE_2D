@@ -1,3 +1,7 @@
+module motion
+
+ contains
+
 subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beam)
   use share_vars
   implicit none
@@ -7,8 +11,9 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beam)
   real (kind=pr), dimension(1:6), intent(out) :: LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)
   real (kind=pr) :: angle_max, t_max, tau1, u0, f, A0, beta, sigma_t, sigma_r, phi, G_translation, G_rotation, C_startup
   real (kind=pr) :: y_max, tau2, k, kt, ktt,a,b,c,d, y,yt,ytt
-  real (kind=pr), dimension(1:12) :: ts
+  real (kind=pr), dimension(1:13) :: ts
   integer :: n
+  logical, save :: already_informed = .false.
 
   select case (beam%iMouvement)
     case (0) ! fixed beam (no leading edge mouvement)    
@@ -21,17 +26,25 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beam)
       alpha    = beam%AngleBeam*pi/180.0
       alpha_t  = 0.0
       alpha_tt = 0.0
-    case (201:212) ! heaving foils for JCP    
+    case (201:213,300:350) ! heaving foils for JCP    
       !--------------------------------------------------------------------------------------------------------
       ! heaving: soft-startup version
       !--------------------------------------------------------------------------------------------------------
-      ts =(/1.0, 1.09, 1.20, 1.29, 1.33, 1.4, 1.5, 1.71, 2.0, 2.4, 3.0, 4.0/)
+      ts =(/1.0, 1.09, 1.20, 1.29, 1.33, 1.4, 1.5, 1.71, 2.0, 2.4, 3.0, 4.0, 1.62/)
       y_max = 0.5
       ! select t_max from list above
-      t_max = ts( beam%iMouvement-200 )
+      if ( beam%iMouvement < 300) then
+        ! cases 200..213 are single foils with variable period time
+        t_max = ts( beam%iMouvement-200 )
+      else
+        ! the cases 300...307 are dragonfly wings, the period time is fixed
+        t_max = 1.62
+        write(*,'("*** dragonfly t_max=",es12.4)') t_max
+      endif
       
-      if (time<1e-8) then
-        write (*,'("iMouvement=",i3," t_max=",es12.4)') beam%iMouvement, t_max
+      if ((time<1e-8).and.(already_informed.eqv..false.)) then
+        write (*,'("*** iMouvement=",i3," t_max=",es12.4)') beam%iMouvement, t_max
+        already_informed = .true.
       endif
      
       if (time <= 1.0) then
@@ -335,3 +348,5 @@ end subroutine
 ! ! !   C_startup = ( tanh(8.0*time-2.0)+tanh(2.0) )/(1.0+tanh(2.0))
 ! ! !   
 ! ! ! end function
+
+end module motion

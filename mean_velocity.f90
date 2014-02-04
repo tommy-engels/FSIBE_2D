@@ -70,7 +70,7 @@ real (kind=pr) function Mean_Uy(time)
   elseif (iMeanVelocity==3) then
         Mean_Uy = sin (theta_inf)
   elseif (iMeanVelocity==4) then !fluid does not move at all
-        Mean_Uy = 0.0!uy_mean
+        Mean_Uy = 0.0
   elseif (iMeanVelocity==6) then
 	Mean_uy = 0.0
   elseif (iMeanVelocity==11) then

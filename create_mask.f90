@@ -2,19 +2,18 @@
 subroutine create_mask ( time, beams )
   use share_vars
   use FieldExport
+  use motion
   implicit none
   integer :: i, j, ix,iy,ib
   real (kind=pr) :: mask_cutoff, dx, dy, a, b, volume, ds_inter, N, h_star, temp, alpha1,alpha2,gamma,ConvertAngle, sponge_size, sponge_size_star, tmp,x
-  real (kind=pr) :: y_chan, H_effective, Mean_ux, Mean_uy
+  real (kind=pr) :: y_chan, H_effective, Mean_ux, Mean_uy, sponge_size_TMP, tmp1, tmp2, tmp3, tmp4
   integer :: ixmax, ixmin, iymax, iymin, n_inter, n_subpoints
   real (kind=pr), intent (in) :: time
 ! Beam indices: 1=beam_x 2=beam_y 3=beam_vx 4=beam_vy 5=theta 6=theta_dot
   real (kind=pr), dimension (0:ns-1, 1:6)   :: beam
   type (solid), dimension(1:iBeam), intent(in) :: beams
-  real (kind=pr) :: alpha, alpha_t, alpha_tt 
+  real (kind=pr) :: alpha, alpha_t, alpha_tt, p,y
   real (kind=pr), dimension(1:6) :: LeadingEdge !LeadingEdge: x, y, vx, vy, ax, ay (Array)  
-  
-  
   !--------------------------------------------------------------------------------
   !		Initialization
   !--------------------------------------------------------------------------------
@@ -127,7 +126,7 @@ subroutine create_mask ( time, beams )
   ! transition. this helps reducing Gibbs perturbations owe to the sponge. Astonishingly, the 25% solution
   ! appears to be the best; a linear function is much worse, a sin over half the sponge thickness also.
   ! let's keep it like this.
-
+  !-------------------------------------------------------------------------------------------
     if (iSponge==4) then
       sponge_size_star = SpongeSize ! what you set is the effective sponge size
       sponge_size = SpongeSize - 2.0*N*dx   !"core" size of the sponge
@@ -179,27 +178,29 @@ subroutine create_mask ( time, beams )
       enddo
       enddo
       !$omp end parallel do
+   endif
+   
+   
+  !-------------------------------------------------------------------------------------------
+  !             Velocity sponge (for free flow configurations, together with vort sponge)
+  !-------------------------------------------------------------------------------------------
+   if (iSponge == 22) then   
+      if (maxval(mask_frame) < 1.0)  then
+        write (*,*) "*** Setting up frame mask, as iSponge is 22"
+        ! this is outsourced because it may be expensive
+        call SmoothFrameAroundDomain ( mask_frame )
+      endif
       
-      !----------------------------
-      ! modified version, sharp mask function     
-      !----------------------------
-!       ixmin = 0
-!       ixmax = nint (SpongeSize/dx)
-!       H_effective = yl-2.0*h_channel
-!       
-!       !$omp parallel do private (iy,y_chan)
-!       do iy=0,ny-1
-!         y_chan = (real(iy)*dy-h_channel)        
-!         ! set parabolic velocity profile
-!         if ((y_chan>0.0).and.(y_chan<H_effective)) then
-! 	  maskvx( ixmin:ixmax, iy ) =  1.5*Mean_ux(time)*y_chan*(H_effective-y_chan)/((0.5*H_effective)**2)
-!         else
-!           maskvx( ixmin:ixmax, iy ) =  0.0
-!         endif        
-! 	mask ( ixmin:ixmax, iy ) = 1.0
-!       enddo
-!       !$omp end parallel do
-      
+      ! add the frame around the domain
+      ! note the penalty parameter is never smaller than 1e-3
+      ! but may be greater if eps is greater
+      mask = mask + mask_frame * eps / max(1.0e-3, eps)
+
+      ! set up velocity mask
+      where (mask_frame>0.0)
+        maskvx = Mean_ux( time )
+        maskvy = Mean_uy( time )
+      end where
    endif
    
   !-------------------------------------------------------------------------------------------
@@ -225,12 +226,13 @@ subroutine create_sponge_mask()
   implicit none
   real (kind=pr) :: dy,dx,sponge_begin, epsilon_sponge
   real (kind=pr) :: sponge_size, tmp,x, N, sponge_size_star,tmp1,tmp2,tmp3,tmp4
-  integer :: ix, ixmin, ixmax, iy
+  integer :: ix, ixmin, ixmax, iy, iymin, iymax
+  real (kind=pr) :: phi(0:nx-1,0:ny-1), p, y, R2, R1, RR, thickness
 
   epsilon_sponge=eps_sponge
-  N=N_smooth !smoothing layer thickness
-  dx=xl/real(nx)
-  dy=yl/real(ny)
+  N  = N_smooth !smoothing layer thickness
+  dx = xl/real(nx)
+  dy = yl/real(ny)
   mask_sponge=0.0
 
   if (iSponge==1) then        !sponge in outflow
@@ -254,7 +256,33 @@ subroutine create_sponge_mask()
 	call SmoothStep (tmp, x, sponge_size*0.4, N*real(dx) )
 	mask_sponge(ix,:)=tmp
       enddo
+      
+!   elseif (iSponge == 99) then 
+!       ! outlet vorticity cancel sponge
+!       ixmin = nint ((xl-2.0*SpongeSize)/dx)
+!       ixmax = nx-1      
+!       mask_sponge (ixmin:ixmax,:) = 1.d0      
+!       
+!       ! top
+!       iymin = nint ((yl-SpongeSize)/dy)
+!       iymax = ny-1      
+!       mask_sponge (:,iymin:iymax) = 1.d0      
+!       
+!       ! bottom
+!       iymin = 0
+!       iymax = nint (SpongeSize/dy)     
+!       mask_sponge (:,iymin:iymax) = 1.d0         
+      
+  elseif (iSponge == 10) then
+      ! test for sharp sponge at outflow
+      ixmin = nint ((xl-SpongeSize)/dx)
+      ixmax = nx-1      
+      mask_sponge (ixmin:ixmax,:) = 1.d0
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!        
   elseif (iSponge==2) then ! sponge in inflow
+  !!!!!!!!!!!!!!!!!!!!!!!!!!    
+  
       sponge_size_star = SpongeSize ! what you set is the effective sponge size
       sponge_size = sponge_size_star - 2.0*N*dx
       sponge_begin = xl - sponge_size_star
@@ -282,7 +310,11 @@ subroutine create_sponge_mask()
         if (mask(ix,iy)*eps>0.0) mask_sponge(ix,iy)= mask_sponge(ix,iy)*(1.0-mask(ix,iy)*eps)
       enddo
       enddo
-  elseif (iSponge==3) then
+      
+  !!!!!!!!!!!!!!!!!!!!!!!!!!    
+  elseif ((iSponge==3)) then
+  !!!!!!!!!!!!!!!!!!!!!!!!!!    
+  
       ! sponge around the domain
       sponge_size_star = SpongeSize ! what you set is the effective sponge size
       sponge_size = sponge_size_star - N*dx
@@ -296,8 +328,28 @@ subroutine create_sponge_mask()
           if (mask_sponge(ix,iy)>1.0) mask_sponge(ix,iy)=1.0
       enddo
       enddo
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!    
+  elseif (iSponge==22) then
+  !!!!!!!!!!!!!!!!!!!!!!!!!!    
+  
+      mask_sponge = 1.0
+      
+      ixmin = nint (SpongeSize /dx)
+      iymin = nint (SpongeSize /dy)
+      ixmax = nint ( (xl-SpongeSize) /dx)
+      iymax = nint ( (yl-SpongeSize) /dy)
+      
+      ! now we have just a whole inside
+      mask_sponge ( ixmin:ixmax, iymin:iymax ) = 0.0
+      
+      ! now we skip the dirchlet sponge which is outside
+      where ( mask > 0.0 )
+        mask_sponge = 0.0
+      end where
+      
   else
-      mask_sponge=0.0
+      mask_sponge = 0.0
   endif
 
   mask_sponge=mask_sponge/epsilon_sponge
@@ -310,6 +362,107 @@ subroutine create_sponge_mask()
   
   
 end subroutine create_sponge_mask
+
+
+
+
+
+subroutine SmoothFrameAroundDomain( mask1 )
+  use share_vars
+  use FieldExport
+  implicit none
+  integer :: ix,iy,ixmin,ixmax,iymin,iymax
+  real(kind=pr) :: phi(0:nx-1,0:ny-1), R1,R2,RR,dx,dy,x,y, thickness, tmp1
+  real(kind=pr),dimension(0:nx-1,0:ny-1), intent(inout) :: mask1
+  
+  dx = xl/real(nx)
+  dy = yl/real(ny) 
+  
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! use level-set phi to define a very smooth but different thickend mask
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  phi = 1000.0
+  
+  thickness = 4.0*t_beam
+  
+  ! R1 is the thickness of the phi-function (distance of the sharp rectangle from the domain)
+  R1 = 0.0!thickness/4.
+  ! R2 is the rounding for the corners
+  R2 = 2.0*thickness
+  RR = R1+R2
+  
+  ixmin =      nint ( RR/dx )
+  ixmax = nx - nint ( RR/dx )
+  iymin =      nint ( RR/dy ) 
+  iymax = ny - nint ( RR/dy ) 
+
+  do ix=ixmin, ixmax
+  do iy=0, ny-1
+      x = real(ix)*dx
+      y = real(iy)*dy
+      if ( ( iy <= nint(R1/dy) ) .or. ( iy >= ny-1-nint(R1/dy) ) ) then
+        phi(ix,iy) = -min ( phi(ix,iy), abs(y-R1), abs(y-(yl-R1)) )
+      else
+        phi(ix,iy) = +min ( phi(ix,iy), abs(y-R1), abs(y-(yl-R1)) )
+      endif 
+  enddo
+  enddo  
+  
+  do ix=0, nx-1
+  do iy=iymin,iymax
+      x = real(ix)*dx
+      y = real(iy)*dy
+      if ( ( ix <= nint(R1/dx) ) .or. ( ix >= nx-1-nint(R1/dx) ) ) then
+        phi(ix,iy) =-min ( phi(ix,iy), abs(x-R1), abs(x-(xl-R1)) )
+      else
+        phi(ix,iy) =+min ( phi(ix,iy), abs(x-R1), abs(x-(xl-R1)) )
+      endif 
+  enddo
+  enddo 
+  
+  ! round corners:      
+  do ix=0, ixmin
+  do iy=0, iymin
+      x = real(ix)*dx
+      y = real(iy)*dy
+      phi(ix,iy) = min ( phi(ix,iy), -(sqrt( (x-RR)**2 + (y-RR)**2 ) - R2) )
+  enddo
+  enddo       
+  
+  
+  do ix=0, ixmin
+  do iy=iymax, ny-1
+      x = real(ix)*dx
+      y = real(iy)*dy
+      phi(ix,iy) = min ( phi(ix,iy), -(sqrt( (x-RR)**2 + (y-(yl-RR))**2 ) - R2) )
+  enddo
+  enddo 
+  
+  do ix=ixmax, nx-1
+  do iy=iymax, ny-1
+      x = real(ix)*dx
+      y = real(iy)*dy
+      phi(ix,iy) = min ( phi(ix,iy), -(sqrt( (x-(xl-RR))**2 + (y-(yl-RR))**2 ) - R2) )
+  enddo
+  enddo 
+  
+  do ix=ixmax, nx-1
+  do iy=0, iymin
+      x = real(ix)*dx
+      y = real(iy)*dy
+      phi(ix,iy) = min ( phi(ix,iy), -(sqrt( (x-(xl-RR))**2 + (y-RR)**2 ) - R2) )
+  enddo
+  enddo 
+        
+  ! sponge around the domain
+  do ix=0, nx-1
+  do iy=0, ny-1
+      call SmoothStep2 (tmp1, phi(ix,iy), thickness/2., thickness/2. )
+      mask1 (ix,iy) = tmp1
+  enddo
+  enddo  
+end subroutine
+  
 
 
 
@@ -365,6 +518,30 @@ subroutine SmoothStep (f,x,t,h)
 
 
 end subroutine SmoothStep
+
+
+subroutine SmoothStep2 (f,x,t,h)
+  use share_vars
+  implicit none
+  !-----------------------------------------------------------------
+  !-- This subroutine returns the value f of a smooth step function
+  !-- The sharp step function would be 1 if x<=t and 0 if x>t
+  !-- h is the semi-size of the smoothing area, so
+  !-- f is 1 if x<=t-h
+  !-- f is 0 if x>t+h
+  !-- f is variable (smooth) in between
+  !-----------------------------------------------------------------
+  real (kind=pr), intent (out) :: f
+  real (kind=pr), intent (in)  :: x,t,h
+
+  if (x<=t-h) then
+    f = 1.0
+  elseif (((t-h)<x).and.(x<(t+h))) then
+    f = 0.5*(1.+cos((x-t+h)*pi/(2.0*h)) )
+  else
+    f = 0.0
+  endif
+end subroutine SmoothStep2
 
 !==============================================================================================================================================
 
