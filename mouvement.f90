@@ -26,7 +26,7 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beam)
       alpha    = beam%AngleBeam*pi/180.0
       alpha_t  = 0.0
       alpha_tt = 0.0
-    case (201:213,300:350) ! heaving foils for JCP    
+    case (201:213,300:350) ! heaving foils for JCP        
       !--------------------------------------------------------------------------------------------------------
       ! heaving: soft-startup version
       !--------------------------------------------------------------------------------------------------------
@@ -72,7 +72,49 @@ subroutine mouvement(time, alpha, alpha_t, alpha_tt, LeadingEdge, beam)
       
       alpha=beam%AngleBeam*pi/180.0
       alpha_t=0.0
-      alpha_tt=0.0    
+      alpha_tt=0.0   
+      
+    case (400:450) ! heaving foils for comparison with experiments done by florine PARAZ  
+      !--------------------------------------------------------------------------------------------------------
+      ! comparison with FLORINE PARAZ, IRPHE
+      !--------------------------------------------------------------------------------------------------------
+      ts =(/0.51,&
+            0.34,&
+            0.25,&
+            0.20,&
+            0.17,&
+            0.14,&
+            0.13,&
+            0.11,&
+            0.10,&
+            0.09,&
+            0.08,&
+            0.08,&
+            0.07 &
+          /)
+      ! the amplitude to recompute figure 3 is very small:
+      y_max = 0.0333
+      ! select t_max from list above
+      t_max = ts( beam%iMouvement-400 )
+      !-----------------------------------------
+      ! some useful parameters are hard codes here because it's late and I'm lazy
+      !-----------------------------------------
+      ! use one period for soft startup
+      tau = t_max
+      tsave = t_max
+      tdrag = t_max/10.0
+      
+      LeadingEdge = 0.0
+      LeadingEdge(1) = beam%x0 
+      LeadingEdge(2) = beam%y0+y_max*sin(2.0*pi*time/t_max+pi/2)
+      LeadingEdge(3) = 0.0
+      LeadingEdge(4) = y_max*(2.0*pi/t_max)*cos(2.0*pi*time/t_max+pi/2)
+      LeadingEdge(5) = 0.0
+      LeadingEdge(6) = -y_max*(2.0*pi/t_max)**2*sin(2.0*pi*time/t_max+pi/2)
+      alpha=beam%AngleBeam*pi/180.0
+      alpha_t=0.0
+      alpha_tt=0.0
+      
     case (2)
       !--------------------------------------------------------------------------------------------------------
       ! heaving (hard startup)
